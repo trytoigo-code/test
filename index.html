@@ -1,0 +1,165 @@
+<!--
+================================================================================
+  このアプリについて
+  山あるき — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  囲碁・麻雀のリーグ戦管理アプリ群のポータルページ。
+  山あるきメンバーが各アプリにアクセスするための入口として機能する。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 index.html で完結）
+  - 各アプリへのリンクを管理する
+
+【技術構成】
+  - 純粋なHTML/CSS（JavaScriptなし）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - シンプルさを最優先とする
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読みやすく・触りやすく・壊れにくい構成を選ぶ
+  ・新しい技術より、長く使い続けられることを優先する
+  ・アプリを追加・変更したら「収録アプリ」を合わせて更新する
+
+【収録アプリ（現時点）】
+  - 囲碁リーグ戦「星取」（igo.html）：星取表・履歴・手合い管理
+  - 麻雀リーグ戦「点棒」（mahjong.html）：成績・順位・履歴の共有
+  - 囲碁 一局一得（goroku.html）：対局前に考え、対局後に学ぶアプリ。しおり機能付き
+  - 足あと（ashiato.html）：仲間との活動記録・希望地の共有
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>山あるき</title>
+
+  <style>
+    :root { color-scheme: light; }
+    html { background: #fcfaf2; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #fcfaf2;
+      color: #333;
+    }
+
+    .wrap {
+      max-width: 500px;
+      margin: 0 auto;
+      min-height: 100vh;
+      padding: 28px 18px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 6px;
+      font-size: 1.5rem;
+    }
+
+    .sub {
+      text-align: center;
+      color: #777;
+      margin-bottom: 28px;
+      font-size: 0.92rem;
+    }
+
+    .card {
+      display: block;
+      text-decoration: none;
+      background: #fff;
+      border: 1px solid #e0dbcd;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+      color: inherit;
+      transition: 0.2s;
+    }
+
+    .card:active {
+      transform: scale(0.98);
+    }
+
+    .title {
+      font-size: 1.08rem;
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      font-size: 0.88rem;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 34px;
+      text-align: center;
+      color: #999;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <h1>山あるき</h1>
+
+  <div class="sub">
+    囲碁・麻雀のリーグ戦管理
+  </div>
+
+  <a class="card" href="igo.html">
+    <div class="title">⚫ 囲碁リーグ戦「星取」</div>
+    <div class="desc">
+      囲碁仲間向けのリーグ戦管理アプリ。<br>
+      星取表・履歴・手合い管理に対応。
+    </div>
+  </a>
+
+  <a class="card" href="mahjong.html">
+    <div class="title">🀄 麻雀リーグ戦「点棒」</div>
+    <div class="desc">
+      麻雀仲間向けのリーグ戦管理アプリ。<br>
+      成績・順位・履歴を共有可能。
+    </div>
+  </a>
+
+  <a class="card" href="goroku.html?group=yamaарuki">
+    <div class="title">📖 囲碁 一局一得</div>
+    <div class="desc">
+      対局前に考え方を整え、対局後に学ぶためのアプリ。<br>
+      進化の連鎖を楽しもう。
+    </div>
+  </a>
+
+  <a class="card" href="ashiato.html">
+    <div class="title">🐾 足あと</div>
+    <div class="desc">
+      仲間との活動記録アプリ。<br>
+      どこへ行ったか、次はどこへ行きたいかを共有。
+    </div>
+  </a>
+
+  <div class="footer">
+    GitHub Pages + Firebase
+  </div>
+
+</div>
+
+</body>
+</html>
