@@ -68,7 +68,7 @@
     #app { max-width: 500px; margin: 0 auto; min-height: 100vh; background: #fcfaf2; }
 
     /* ヘッダー */
-    #header { background: #3a5c4a; color: #f0f5f0; padding: 14px 18px 0; }
+    #header { background: #3a5c4a; color: #f0f5f0; padding: 14px 18px 0; position: sticky; top: 0; z-index: 101; }
     #yamaарuki-label { font-size: 0.72rem; color: #8ab4a0; font-family: sans-serif; letter-spacing: 0.08em; margin-bottom: 2px; }
     #header h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0.05em; color: #f0f5f0; }
     #header-sub { font-size: 0.78rem; color: #8ab4a0; margin: 3px 0 14px; font-family: sans-serif; }
@@ -580,7 +580,7 @@ document.getElementById("admin-toggle").addEventListener("click", () => {
   const body  = document.getElementById("admin-body");
   const arrow = document.getElementById("admin-arrow");
   const isOpen = body.style.display !== "none";
-  body.style.display = isOpen ? "none" : "";
+  body.style.display = isOpen ? "none" : "block";
   arrow.textContent  = isOpen ? "▶" : "▼";
 });
 
