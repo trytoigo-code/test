@@ -34,9 +34,9 @@
   ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
 
 【主な機能（現時点）】
-  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・削除
+  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・編集・削除
   - 👥仲間タブ：メンバー別参加回数・参加率の表示
-  - 🌟希望タブ：行き先希望の一覧・追加・投票（名前選択式トグル）
+  - 🌟希望タブ：行き先希望の一覧・追加（メモ任意）・編集・投票（名前選択式トグル）・削除
   - ⚙️設定タブ：管理者の仕事（メンバー管理）
 
 【今後の改良候補】
@@ -183,6 +183,17 @@
       font-size: 0.75rem; cursor: pointer; float: right;
       font-family: sans-serif;
     }
+    .edit-btn-sm {
+      background: none; border: none; color: #8ab4a0;
+      font-size: 0.75rem; cursor: pointer; float: right;
+      font-family: sans-serif; margin-right: 6px;
+    }
+    .inline-edit-form {
+      display: none; margin-top: 10px; padding: 10px;
+      background: #faf8f0; border: 1px solid #e0dbcd;
+      border-radius: 8px;
+    }
+    .inline-edit-form.open { display: block; }
 
     /* セクション見出し */
     .section-title {
@@ -273,6 +284,7 @@
             <option value="">（選択してください）</option>
           </select>
         </div>
+        <div class="fg"><label>メモ（任意）</label><textarea id="kib-note" rows="2" placeholder="補足など"></textarea></div>
         <button class="form-submit" id="kib-submit">追加する</button>
         <button class="form-cancel" id="kib-cancel">キャンセル</button>
       </div>
@@ -390,18 +402,56 @@ function renderKiroku() {
 
   const sorted = list.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   document.getElementById("kiroku-list").innerHTML = sorted.map(act => {
-    const id     = Object.keys(activities).find(k => activities[k] === act) || "";
-    const mems   = act.members ? act.members.join("・") : "";
-    const count  = act.members ? act.members.length : 0;
-    const note   = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
+    const id    = Object.keys(activities).find(k => activities[k] === act) || "";
+    const mems  = act.members ? act.members.join("・") : "";
+    const count = act.members ? act.members.length : 0;
+    const note  = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
+    const dateVal = act.date ? act.date.replace(/\//g, "-") : "";
+    const memberBtns = members.map(m =>
+      `<button class="member-check-btn ${(act.members||[]).includes(m) ? "selected" : ""}" data-name="${m}" onclick="toggleEditMember(this,'${id}')">${m}</button>`
+    ).join("");
     return `
       <div class="card">
-        <button class="del-btn-sm" data-id="${id}" onclick="deleteActivity('${id}')">削除</button>
+        <button class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
+        <button class="edit-btn-sm" onclick="toggleActEdit('${id}')">編集</button>
         <div class="card-title">${act.date || ""} ${act.name || ""}</div>
         <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
         ${note}
+        <div class="inline-edit-form" id="act-edit-${id}">
+          <div class="fg"><label>活動日</label><input type="date" id="ae-date-${id}" value="${dateVal}"></div>
+          <div class="fg"><label>活動名・場所</label><input type="text" id="ae-name-${id}" value="${(act.name||"").replace(/"/g,'&quot;')}"></div>
+          <div class="fg"><label>参加メンバー</label><div class="member-checks" id="ae-members-${id}">${memberBtns}</div></div>
+          <div class="fg"><label>メモ（任意）</label><textarea id="ae-note-${id}" rows="2">${act.note||""}</textarea></div>
+          <button class="form-submit" onclick="submitActEdit('${id}')">更新する</button>
+          <button class="form-cancel" onclick="toggleActEdit('${id}')">キャンセル</button>
+        </div>
       </div>`;
   }).join("") || `<p style="color:#999;font-size:0.88rem">まだ活動記録がありません。</p>`;
+}
+
+function toggleActEdit(id) {
+  const form = document.getElementById(`act-edit-${id}`);
+  form.classList.toggle("open");
+}
+
+function toggleEditMember(btn, id) {
+  btn.classList.toggle("selected");
+}
+
+function submitActEdit(id) {
+  const dateRaw = document.getElementById(`ae-date-${id}`).value;
+  const name    = document.getElementById(`ae-name-${id}`).value.trim();
+  const note    = document.getElementById(`ae-note-${id}`).value.trim();
+  if (!dateRaw || !name) { alert("活動日と活動名を入力してください"); return; }
+  const selBtns = document.querySelectorAll(`#ae-members-${id} .member-check-btn.selected`);
+  const mems    = [...selBtns].map(b => b.dataset.name);
+  if (activitiesRef) activitiesRef.child(id).update({
+    date: dateRaw.replace(/-/g, "/"),
+    name,
+    members: mems,
+    note: note || null,
+  });
+  showToast("更新しました");
 }
 
 function deleteActivity(id) {
@@ -448,18 +498,36 @@ function renderKibou() {
         const memberNames = members.map(m =>
           `<button class="vote-name-btn" data-id="${id}" data-name="${m}">${m}</button>`
         ).join("");
+        const proposerOpts = members.map(m =>
+          `<option value="${m}" ${w.proposer===m?"selected":""}>${m}</option>`
+        ).join("");
+        const noteDisp = w.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${w.note}</div>` : "";
         return `
           <div class="kibou-card" id="kibou-${id}">
             <button class="del-btn-sm" onclick="deleteWish('${id}')">削除</button>
+            <button class="edit-btn-sm" onclick="toggleKibouEdit('${id}')">編集</button>
             <div class="kibou-title">${w.place || ""}</div>
             <div class="kibou-votes">
               🙋 ${votes.length}名${votes.length ? "：" + votes.join("・") : ""}
               ${w.proposer ? `<span style="color:#bbb;margin-left:8px">提案：${w.proposer}</span>` : ""}
             </div>
-            <button class="vote-btn" data-id="${id}">行きたい！</button>
+            ${noteDisp}
+            <button class="vote-btn" data-id="${id}" style="margin-top:6px">行きたい！</button>
             <div class="vote-picker" id="picker-${id}">
               <div class="vote-picker-label">あなたの名前を選んでください</div>
               <div class="vote-name-btns">${memberNames}</div>
+            </div>
+            <div class="inline-edit-form" id="kib-edit-${id}">
+              <div class="fg"><label>行き先・やりたいこと</label><input type="text" id="ke-place-${id}" value="${(w.place||"").replace(/"/g,'&quot;')}"></div>
+              <div class="fg"><label>提案者</label>
+                <select id="ke-proposer-${id}">
+                  <option value="">（選択してください）</option>
+                  ${proposerOpts}
+                </select>
+              </div>
+              <div class="fg"><label>メモ（任意）</label><textarea id="ke-note-${id}" rows="2">${w.note||""}</textarea></div>
+              <button class="form-submit" onclick="submitKibouEdit('${id}')">更新する</button>
+              <button class="form-cancel" onclick="toggleKibouEdit('${id}')">キャンセル</button>
             </div>
           </div>`;
       }).join("")
@@ -487,6 +555,21 @@ function renderKibou() {
       document.getElementById(`picker-${id}`).style.display = "none";
     });
   });
+}
+
+function toggleKibouEdit(id) {
+  const form = document.getElementById(`kib-edit-${id}`);
+  form.classList.toggle("open");
+}
+
+function submitKibouEdit(id) {
+  const place    = document.getElementById(`ke-place-${id}`).value.trim();
+  const proposer = document.getElementById(`ke-proposer-${id}`).value;
+  const note     = document.getElementById(`ke-note-${id}`).value.trim();
+  if (!place) { alert("行き先を入力してください"); return; }
+  if (!proposer) { alert("提案者を選択してください"); return; }
+  if (wishesRef) wishesRef.child(id).update({ place, proposer, note: note || null });
+  showToast("更新しました");
 }
 
 function deleteWish(id) {
@@ -550,7 +633,7 @@ function buildMemberChecks() {
 document.getElementById("add-kibou-btn").addEventListener("click", () => {
   kibFormOpen = !kibFormOpen;
   document.getElementById("kibou-form").className = `form-box ${kibFormOpen ? "open" : ""}`;
-  if (kibFormOpen) { document.getElementById("kib-place").value = ""; }
+  if (kibFormOpen) { document.getElementById("kib-place").value = ""; document.getElementById("kib-note").value = ""; }
 });
 
 document.getElementById("kib-cancel").addEventListener("click", () => {
@@ -561,9 +644,10 @@ document.getElementById("kib-cancel").addEventListener("click", () => {
 document.getElementById("kib-submit").addEventListener("click", () => {
   const place    = document.getElementById("kib-place").value.trim();
   const proposer = document.getElementById("kib-proposer").value;
+  const note     = document.getElementById("kib-note").value.trim();
   if (!place) { alert("行き先を入力してください"); return; }
   if (!proposer) { alert("提案者を選択してください"); return; }
-  if (wishesRef) wishesRef.push({ place, proposer, votes: {} });
+  if (wishesRef) wishesRef.push({ place, proposer, note: note || null, votes: {} });
   kibFormOpen = false;
   document.getElementById("kibou-form").className = "form-box";
   showToast("希望を追加しました");
