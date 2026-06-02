@@ -34,8 +34,7 @@
   ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
 
 【主な機能（現時点）】
-  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・編集・削除
-  - 👥仲間タブ：メンバー別参加回数・参加率の表示
+  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・編集・削除（活動種別：囲碁／麻雀 複数選択可）
   - 🌟希望タブ：行き先希望の一覧・追加（メモ任意）・編集・投票（名前選択式トグル）・削除
   - ⚙️設定タブ：管理者の仕事（メンバー管理）
 
@@ -152,10 +151,6 @@
       font-size: 0.88rem; font-family: inherit; cursor: pointer;
     }
 
-    /* 仲間バー */
-    .nakama-bar-wrap { height: 8px; background: #f0ede4; border-radius: 4px; margin-top: 6px; }
-    .nakama-bar { height: 8px; background: #3a5c4a; border-radius: 4px; transition: width 0.4s; }
-
     /* 希望 */
     .kibou-card { background: #fff; border: 1px solid #e0dbcd; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
     .kibou-title { font-size: 0.95rem; font-weight: bold; color: #2c3e50; margin-bottom: 6px; }
@@ -238,7 +233,6 @@
     <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
     <div id="nav">
       <button class="tab-btn active" data-tab="kiroku">📋記録</button>
-      <button class="tab-btn" data-tab="nakama">👥仲間</button>
       <button class="tab-btn" data-tab="kibou">🌟希望</button>
       <button class="tab-btn" data-tab="settings">⚙️設定</button>
     </div>
@@ -259,6 +253,13 @@
         <div class="fg"><label>活動日</label><input type="date" id="act-date"></div>
         <div class="fg"><label>活動名・場所</label><input type="text" id="act-name" placeholder="例：川越散策"></div>
         <div class="fg">
+          <label>活動種別</label>
+          <div class="member-checks" id="act-kinds">
+            <button type="button" class="member-check-btn" data-kind="囲碁">⚫⚪囲碁</button>
+            <button type="button" class="member-check-btn" data-kind="麻雀">🀄麻雀</button>
+          </div>
+        </div>
+        <div class="fg">
           <label>参加メンバー</label>
           <div class="member-checks" id="act-members"></div>
         </div>
@@ -268,11 +269,6 @@
       </div>
 
       <div id="kiroku-list"></div>
-    </div>
-
-    <!-- 👥 仲間パネル -->
-    <div class="panel" id="panel-nakama">
-      <div id="nakama-list"></div>
     </div>
 
     <!-- 🌟 希望パネル -->
@@ -336,6 +332,7 @@ let members    = [];
 let actFormOpen = false;
 let kibFormOpen = false;
 let selectedActMembers = new Set();
+let selectedActKinds = new Set();
 
 let activitiesRef = null;
 let wishesRef     = null;
@@ -352,7 +349,6 @@ if (isConfigured) {
     activitiesRef.on("value", snap => {
       activities = snap.val() || {};
       renderKiroku();
-      renderNakama();
     });
     wishesRef.on("value", snap => {
       wishes = snap.val() || {};
@@ -375,10 +371,10 @@ if (isConfigured) {
 } else {
   setSyncStatus(false);
   renderKiroku();
-  renderNakama();
   renderKibou();
   renderMemberAdmin();
   buildMemberChecks();
+  buildKindChecks();
   buildProposerSelect();
 }
 
@@ -399,6 +395,9 @@ setInterval(() => { if (document.getElementById("sync-dot").style.background ===
 function pad(n) { return String(n).padStart(2, "0"); }
 
 // ---------- 記録タブ ----------
+const KINDS = ["囲碁", "麻雀"];
+const KIND_LABELS = { "囲碁": "⚫⚪囲碁", "麻雀": "🀄麻雀" };
+
 function renderKiroku() {
   const list   = Object.values(activities);
   const places = new Set(list.map(a => a.name)).size;
@@ -412,8 +411,15 @@ function renderKiroku() {
     const count = act.members ? act.members.length : 0;
     const note  = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
     const dateVal = act.date ? act.date.replace(/\//g, "-") : "";
+    const actKinds = act.kinds || [];
+    const kindDisp = actKinds.length
+      ? `<div style="font-size:0.78rem;color:#3a5c4a;margin-bottom:2px">${actKinds.map(k => KIND_LABELS[k]||k).join("　")}</div>`
+      : "";
     const memberBtns = members.map(m =>
       `<button type="button" class="member-check-btn ${(act.members||[]).includes(m) ? "selected" : ""}" data-name="${m}" onclick="this.classList.toggle('selected')">${m}</button>`
+    ).join("");
+    const kindBtns = KINDS.map(k =>
+      `<button type="button" class="member-check-btn ${actKinds.includes(k) ? "selected" : ""}" data-kind="${k}" onclick="this.classList.toggle('selected')">${KIND_LABELS[k]}</button>`
     ).join("");
     return `
       <div class="card">
@@ -421,12 +427,14 @@ function renderKiroku() {
           <button type="button" class="edit-btn-sm" onclick="toggleActEdit('${id}')">修正</button>
           <button type="button" class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
         </div>
+        ${kindDisp}
         <div class="card-title">${act.date || ""} ${act.name || ""}</div>
         <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
         ${note}
         <div class="inline-edit-form" id="act-edit-${id}">
           <div class="fg"><label>活動日</label><input type="date" id="ae-date-${id}" value="${dateVal}"></div>
           <div class="fg"><label>活動名・場所</label><input type="text" id="ae-name-${id}" value="${(act.name||"").replace(/"/g,'&quot;')}"></div>
+          <div class="fg"><label>活動種別</label><div class="member-checks" id="ae-kinds-${id}">${kindBtns}</div></div>
           <div class="fg"><label>参加メンバー</label><div class="member-checks" id="ae-members-${id}">${memberBtns}</div></div>
           <div class="fg"><label>メモ（任意）</label><textarea id="ae-note-${id}" rows="2">${act.note||""}</textarea></div>
           <button type="button" class="form-submit" onclick="submitActEdit('${id}')">更新する</button>
@@ -446,12 +454,15 @@ function submitActEdit(id) {
   const name    = document.getElementById(`ae-name-${id}`).value.trim();
   const note    = document.getElementById(`ae-note-${id}`).value.trim();
   if (!dateRaw || !name) { alert("活動日と活動名を入力してください"); return; }
-  const selBtns = document.querySelectorAll(`#ae-members-${id} .member-check-btn.selected`);
-  const mems    = [...selBtns].map(b => b.dataset.name);
+  const selMems  = document.querySelectorAll(`#ae-members-${id} .member-check-btn.selected`);
+  const mems     = [...selMems].map(b => b.dataset.name);
+  const selKinds = document.querySelectorAll(`#ae-kinds-${id} .member-check-btn.selected`);
+  const kinds    = [...selKinds].map(b => b.dataset.kind);
   if (activitiesRef) activitiesRef.child(id).update({
     date: dateRaw.replace(/-/g, "/"),
     name,
     members: mems,
+    kinds: kinds.length ? kinds : null,
     note: note || null,
   });
   showToast("更新しました");
@@ -461,30 +472,6 @@ function deleteActivity(id) {
   if (!confirm("この活動記録を削除しますか？")) return;
   if (activitiesRef) activitiesRef.child(id).remove();
   showToast("削除しました");
-}
-
-// ---------- 仲間タブ ----------
-function renderNakama() {
-  const counts = {};
-  members.forEach(m => counts[m] = 0);
-  Object.values(activities).forEach(act => {
-    (act.members || []).forEach(m => { counts[m] = (counts[m] || 0) + 1; });
-  });
-  const total = Object.values(activities).length || 1;
-  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-
-  document.getElementById("nakama-list").innerHTML = sorted.length
-    ? sorted.map(([name, cnt]) => `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-          <span style="font-weight:bold;color:#2c3e50">${name}</span>
-          <span style="font-size:0.8rem;color:#888;font-family:sans-serif">${cnt}回 / ${Math.round(cnt/total*100)}%</span>
-        </div>
-        <div class="nakama-bar-wrap">
-          <div class="nakama-bar" style="width:${Math.round(cnt/total*100)}%"></div>
-        </div>
-      </div>`).join("")
-    : `<p style="color:#999;font-size:0.88rem">メンバーが設定されていません。</p>`;
 }
 
 // ---------- 希望タブ ----------
@@ -593,7 +580,9 @@ document.getElementById("add-activity-btn").addEventListener("click", () => {
     document.getElementById("act-name").value = "";
     document.getElementById("act-note").value = "";
     selectedActMembers.clear();
+    selectedActKinds.clear();
     buildMemberChecks();
+    buildKindChecks();
   }
 });
 
@@ -611,6 +600,7 @@ document.getElementById("act-submit").addEventListener("click", () => {
     date: date.replace(/-/g, "/"),
     name,
     members: [...selectedActMembers],
+    kinds: selectedActKinds.size ? [...selectedActKinds] : null,
     note: note || null,
   });
   actFormOpen = false;
@@ -631,6 +621,20 @@ function buildMemberChecks() {
       else selectedActMembers.add(name);
       btn.classList.toggle("selected");
     });
+  });
+}
+
+function buildKindChecks() {
+  const wrap = document.getElementById("act-kinds");
+  if (!wrap) return;
+  wrap.querySelectorAll(".member-check-btn").forEach(btn => {
+    const kind = btn.dataset.kind;
+    btn.className = `member-check-btn${selectedActKinds.has(kind) ? " selected" : ""}`;
+    btn.onclick = () => {
+      if (selectedActKinds.has(kind)) selectedActKinds.delete(kind);
+      else selectedActKinds.add(kind);
+      btn.classList.toggle("selected");
+    };
   });
 }
 
