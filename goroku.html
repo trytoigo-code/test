@@ -1,0 +1,702 @@
+<!--
+================================================================================
+  このアプリについて
+  囲碁 一局一得 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  対局前に考え方を整え、対局後に学びを得るためのツール。
+  「語録を読むためのアプリ」ではなく、「対局前に考え、対局後に学ぶためのアプリ」。
+  気づきの共有による進化の連鎖を支援する。
+
+  名称の由来：
+  「進化には相乗効果があるので、誰かが進化すれば周りも進化する。
+  そういう変化が楽しいですね。」
+
+【利用の流れ】
+  🎯心得（対局前） → 対局 → 📝学び（対局後） → 次の対局
+  Aさんの気づき → 感想戦 → Bさんが試す → 新しい気づき → さらに広がる
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 goroku.html で完結）
+  - index.htmlから ?group=yamaарuki 付きでリンク
+  - 単独アクセス時はしおり機能なし
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（しおりのグループ共有・使用中の色管理に使用）
+  - Google Fonts（Noto Sans JP）読みやすさのため使用
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - 新技術の導入より、継続して利用しやすい構成を優先する
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読みやすく・触りやすく・壊れにくい構成を選ぶ
+  ・新しい技術より、長く使い続けられることを優先する
+  ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
+
+【主な機能（現時点）】
+  - 🎯着眼タブ：次の一手の考え方（8問・3section）。各問に📌ポイント説明付き
+  - 📝学びタブ：感想戦・自己検討を支援
+      今日の一局を振り返る（局面認識・方針・評価の8問）
+      今日の課題（6問）・各問に📖語録を見るボタン付き
+      チェックしてもポイントは自動表示されない（任意で開く）
+  - 📖語録タブ：平本先生・畠さんの言葉に触れる
+      4章＋補助の全33語録をアコーディオン形式で閲覧
+      各語録にしおりボタン付き（グループ共有）
+  - ⚙️設定タブ：しおりの色を選択（6色・個人設定）
+  - しおり機能：語録タブのみ。6色・グループ共有（Firebase）
+  - 山あるき連動：?group=yamaарuki 付きアクセス時にヘッダー表示
+
+【文責】
+  平本先生・畠さんの言葉を西がまとめた語録集です（文責：西）
+
+【今後の改良候補】
+  - テーマと語録タブの連動（テーマでフィルタリング）
+  - 気づきの共有機能（感想戦サポート）
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>囲碁 一局一得</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html { background: #fcfaf2; }
+    body {
+      margin: 0; padding: 0;
+      font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+      background: #fcfaf2 !important;
+      color: #333;
+    }
+    #app { max-width: 500px; margin: 0 auto; min-height: 100vh; background: #fcfaf2; }
+
+    /* ヘッダー */
+    #header { background: #7a5c3a; color: #fdf5e8; padding: 14px 18px 0; position: sticky; top: 0; z-index: 101; }
+    #yamaарuki-label { font-size: 0.72rem; color: #c8a87a; font-family: sans-serif; letter-spacing: 0.08em; margin-bottom: 2px; }
+    #header h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.05em; color: #fdf5e8; }
+    #header-sub { font-size: 0.78rem; color: #c8a87a; margin: 3px 0 14px; font-family: sans-serif; }
+
+    /* タブ */
+    #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; position: sticky; top: 0; z-index: 100; }
+    .tab-btn {
+      flex: 1; background: none; border: none;
+      border-bottom: 3px solid transparent;
+      color: #888; padding: 10px 0;
+      font-size: 0.8rem; font-family: inherit; cursor: pointer;
+    }
+    .tab-btn.active { color: #7a5c3a; border-bottom-color: #e8c040; font-weight: bold; background: #fff; }
+
+    /* コンテンツ */
+    #content { padding: 16px; background: #fcfaf2; }
+    .panel { display: none; background: #fcfaf2; }
+    .panel.active { display: block; }
+
+    /* セクション見出し */
+    .section-title {
+      font-size: 0.72rem; color: #7a5c3a;
+      font-family: sans-serif; letter-spacing: 0.05em;
+      border-left: 3px solid #e8c040;
+      padding-left: 8px; margin: 18px 0 10px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* 主要セクション見出し（目立たせる） */
+    .section-title-feature {
+      font-size: 0.95rem; font-weight: bold;
+      color: #fdf5e8; font-family: sans-serif; letter-spacing: 0.06em;
+      background: linear-gradient(90deg, #7a5c3a 0%, #a07848 100%);
+      border-left: 4px solid #e8c040;
+      padding: 9px 12px; margin: 22px -16px 14px;
+    }
+    .section-title-feature:first-child { margin-top: -16px; }
+
+    /* チェックアイテム */
+    .check-group { margin-bottom: 14px; }
+    .check-group-label {
+      font-size: 0.75rem; color: #999;
+      font-family: sans-serif; margin-bottom: 6px;
+    }
+    .check-item { margin-bottom: 8px; }
+    .check-label {
+      display: flex; align-items: flex-start; gap: 10px;
+      cursor: pointer; font-size: 0.88rem; line-height: 1.6;
+      color: #333 !important;
+    }
+    .check-label input { margin-top: 4px; flex-shrink: 0; accent-color: #7a5c3a; }
+
+    /* ポイント／語録 折りたたみ */
+    .point-details {
+      margin: 4px 0 0 24px;
+    }
+    .point-summary {
+      font-size: 0.76rem; color: #b89040;
+      font-family: sans-serif; cursor: pointer;
+      list-style: none; padding: 2px 0;
+    }
+    .point-summary::-webkit-details-marker { display: none; }
+    .point-summary::before { content: "▶ "; font-size: 0.65rem; }
+    details[open] .point-summary::before { content: "▼ "; }
+    .point-body {
+      margin-top: 6px; padding: 8px 12px;
+      border-radius: 0 6px 6px 0; font-size: 0.82rem;
+      line-height: 1.7; font-weight: 500;
+    }
+    .point-body.tip {
+      background: #fdf5e8; border-left: 3px solid #e8c040; color: #5c3a10;
+    }
+    .point-body.quote {
+      background: #fff; border-left: 3px solid #c0c0c0; color: #444;
+      font-style: normal;
+    }
+
+    /* 着眼タブ ①②③ ステップ見出し */
+    .step-label {
+      font-size: 0.88rem;
+      font-weight: bold;
+      color: #7a5c3a;
+      margin: 16px 0 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e0dbcd;
+    }
+
+    /* テーマピル → 削除済み */
+
+    /* アコーディオン（語録） */
+    .chapter-toggle {
+      width: 100%; border: 1px solid #e0dbcd;
+      border-radius: 10px; padding: 12px 14px;
+      margin-bottom: 8px; display: flex;
+      justify-content: space-between; align-items: center;
+      cursor: pointer; background: #fff; text-align: left;
+      font-family: inherit; transition: 0.2s;
+    }
+    .chapter-toggle.open { border-radius: 10px 10px 0 0; margin-bottom: 0; }
+    .chapter-toggle-label { font-size: 0.68rem; letter-spacing: 0.05em; font-family: sans-serif; margin-bottom: 2px; }
+    .chapter-toggle-title { font-size: 0.95rem; font-weight: bold; color: #2c3e50; }
+    .chapter-toggle-sub { font-size: 0.74rem; color: #888; margin-top: 2px; }
+    .chapter-arrow { font-size: 0.85rem; transition: transform 0.2s; }
+    .chapter-toggle.open .chapter-arrow { transform: rotate(90deg); }
+    .chapter-body { display: none; background: #fff; border: 1px solid #e0dbcd; border-top: none; border-radius: 0 0 10px 10px; margin-bottom: 8px; }
+    .chapter-body.open { display: block; }
+    .quote-card { padding: 10px 14px; border-bottom: 1px solid #f0ede4; }
+    .quote-card:last-child { border-bottom: none; }
+    .quote-text { font-size: 0.86rem; line-height: 1.8; color: #333; border-left: 3px solid #e0dbcd; padding-left: 10px; margin-bottom: 5px; font-weight: 500; }
+    .quote-meta { font-size: 0.7rem; color: #aaa; font-family: sans-serif; display: flex; justify-content: space-between; align-items: center; }
+    .bookmark-dots { display: flex; gap: 3px; }
+    .bookmark-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .bookmark-btn { background: none; border: 1px solid #ddd; border-radius: 5px; padding: 2px 7px; font-size: 0.7rem; cursor: pointer; font-family: sans-serif; }
+    .bookmark-btn.bookmarked { font-weight: bold; }
+
+    /* リセットボタン */
+    .reset-btn {
+      width: 100%; background: #f0ede4; border: 1px solid #ddd;
+      border-radius: 8px; padding: 9px; font-size: 0.83rem;
+      color: #888; cursor: pointer; font-family: inherit; margin-top: 14px;
+    }
+
+    /* トースト */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #2c3e50; color: #fff; padding: 10px 20px;
+      border-radius: 20px; font-size: 0.83rem; font-family: sans-serif;
+      display: none; z-index: 999; white-space: nowrap;
+    }
+
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ヘッダー -->
+  <div id="header">
+    <div id="yamaарuki-label" style="display:none">山あるき</div>
+    <h1>囲碁 一局一得</h1>
+    <div id="header-sub">進化の連鎖を楽しもう。</div>
+    <div style="font-size:0.7rem;color:#c8a87a;line-height:1.6;margin-bottom:12px;font-family:sans-serif">なお、このアプリに掲載している囲碁語録や考え方は、平本先生および畠さんの言葉をもとに作成しています。文責は西にあります。</div>
+    <div id="nav">
+      <button class="tab-btn active" data-tab="chakugan">🎯着眼</button>
+      <button class="tab-btn" data-tab="manabi">📝学び</button>
+      <button class="tab-btn" data-tab="goroku">📖語録</button>
+      <button class="tab-btn" data-tab="settings" id="tab-settings">⚙️設定</button>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- 🎯 着眼パネル -->
+    <div class="panel active" id="panel-chakugan">
+
+      <div class="section-title-feature">🎯 次の一手の考え方</div>
+
+      <div class="check-group">
+        <div class="step-label">① 局面を認識する</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> ここは誰の勢力か</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">打つ前に、ここが自分の勢力か相手の勢力かを確認する。相手の厚みの中で戦うのは不利。自分の勢力で堂々と戦うのが大原則。情勢判断が出発点。</div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> この石は強いか弱いか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">石の強弱を見極めることが次の一手の出発点。強い石には余計な手をかけず、弱い石への対応を優先する。</div>
+          </details>
+        </div>
+      </div>
+
+      <div class="check-group">
+        <div class="step-label">② 方針を決める</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 強い石に手を掛けていないか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">強いほうから打つのはいけない。強い石に手をかけるのは損。相手の弱い方向へ打つのが正しい方向性。固く打つのは「しばらく手をかけずに済ます」ためだと意識する。</div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 弱い石は逃・生・捨・振のどれで処理するか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">弱い石の処理は4種類。生かす手（逃げる・生きる）と捨てる手（手抜く・フリカワる）。この判断を最初に決めてから、どこに打つかを考える。</div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 軽くできる余地はあるか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">捨て石や手抜きで軽く打てないか考える。さばきのきっかけは相手の弱いところにある。重く戦わず、捨てる判断が軽い碁につながる。</div>
+          </details>
+        </div>
+      </div>
+
+      <div class="check-group">
+        <div class="step-label">③ 手を評価する</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 主導権は取れるか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">取りに行かず、逃げてもらう方が得。相手に打ちたくない手を打たせることが攻めの本質。自分の石も少し弱いが相手よりは強い状態をキープする。</div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 一番大きいか</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">今打とうとしている手が盤上で本当に一番大きいかを問う。「一番」かどうかを判断したか、が大事。大きいところを逃すのが最も損。</div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 先手か後手か</label>
+          <details class="point-details"><summary class="point-summary">📌 ポイント</summary>
+            <div class="point-body tip">打ち切った後の次の手を考えてから打つ。大きい後続手があれば先手を取るように。特にない場合は後手でしっかり打てばよい。</div>
+          </details>
+        </div>
+      </div>
+
+      <button class="reset-btn" id="chakugan-reset">チェックをリセット</button>
+    </div>
+
+    <!-- 📝 学びパネル -->
+    <div class="panel" id="panel-manabi">
+
+      <div class="section-title-feature">📍 今日の一局を振り返る</div>
+
+      <div class="check-group">
+        <div class="step-label">局面認識</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 強弱判断は適切だったか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「基本的に、強いほうから打つのはいけない。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 勢力判断は適切だったか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「常に情勢判断をして、力関係を感じながら打つことが大切である。そして、有利なところで戦いになるようにもっていく。」<br><span style="font-size:0.72rem;color:#bbb">― 平本先生</span></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="check-group">
+        <div class="step-label">方針</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 強い石に手を掛けていなかったか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「自分の強いところにさらに手をかけて地にしたがる人が多いが、強いところに打たされるのは辛いと意識してください。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 弱石処理は適切だったか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「戦いが起きた時、最初に考えるべきことは弱い石の処理の仕方です。生かす手が2通り（逃げる、生きる）、捨てる手が2通り（手抜く、フリカワる）。この判断があってはじめて、どこに打てばよいかを考えることができる。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 軽く打てたか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「さばくきっかけを作るには、相手の弱いところを探すとよい。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="check-group">
+        <div class="step-label">評価</div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 主導権を握れたか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「攻めるための最高の状態は、『自分の石も弱い』が、相手の石よりは少し強い状態である。その状態をキープしておくことが大切で、これが逆転すると反撃されてしまう。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 大場を打てたか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「世の中で一番大きいのはここなの？そういう判断をしたのですか？大事なことは、『一番』大きいと判断したかどうか、ということ。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 先手を意識できたか</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「今打っている箇所を打ち切った後に、どこへ打つべきかを考える。大きいところがあるなら、先手を取るように打つ。それほど大きいところがないなら、後手でしっかり打てばよい。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="section-title-feature">✏️ 今日の課題</div>
+      <p style="font-size:0.8rem;color:#888;margin:0 0 10px;font-family:sans-serif">反省のためではなく、次の一局で試すことを見つけるために。</p>
+
+      <div class="check-group">
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 強い石を守り過ぎた</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「基本的に、強いほうから打つのはいけない。強いほうに押し付けるように打たなければいけない。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 弱石処理が甘かった</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「生きている石から動いて、相手の石を取りに行ってはいけない。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 軽く打てなかった</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「外から打って捨てるなら、中では何もしないほうがよい。そもそもゴリゴリと打つ人は、捨てることなど考えないのだろうが。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 主導権を失った</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「取りにいくより、逃すほうが得。取りにいくのではなく、逃げてくださいと追い立てる。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 大場を逃した</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「打たれたら嫌なところに先回りして打つことと、打たれても構わないようにしておくことには、同じ価値がある。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+        <div class="check-item">
+          <label class="check-label"><input type="checkbox"> 後手が多かった</label>
+          <details class="point-details"><summary class="point-summary">📖 語録を見る</summary>
+            <div class="point-body quote">「今打っている箇所を打ち切った後に、どこへ打つべきかを考える。大きいところがあるなら、先手を取るように打つ。」<br><span style="font-size:0.72rem;color:#bbb">― 畠さん</span></div>
+          </details>
+        </div>
+      </div>
+
+      <button class="reset-btn" id="manabi-reset">チェックをリセット</button>
+    </div>
+
+    <!-- 📖 語録パネル -->
+    <div class="panel" id="panel-goroku"></div>
+
+    <!-- ⚙️ 設定パネル -->
+    <div class="panel" id="panel-settings">
+      <div class="section-title" style="margin-top:0">しおりの色</div>
+      <div id="settings-body"></div>
+    </div>
+
+  </div><!-- /content -->
+  <div id="toast"></div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+// ============================================================
+//  Firebase設定（igo.htmlと同じプロジェクトを使用）
+// ============================================================
+const firebaseConfig = {
+  apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+  authDomain:        "hiking-558a9.firebaseapp.com",
+  databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+  projectId:         "hiking-558a9",
+  storageBucket:     "hiking-558a9.firebasestorage.app",
+  messagingSenderId: "1066293850319",
+  appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+};
+
+// ---------- 語録データ ----------
+const CHAPTERS = [
+  { id:"ch1", color:"#d4900a", label:"第1章", title:"大局と方向", sub:"どこで戦うか",
+    quotes:[
+      {text:"常に情勢判断をして、力関係を感じながら打つことが大切である。そして、有利なところで戦いになるようにもっていく。最初に行うのは形勢判断ではなく、情勢判断である。形勢判断は全局的な判断であり、地合い計算も含むため難しい。一方、情勢判断は部分的な力関係の判断であり、地合い計算は含まない。", by:"平本先生"},
+      {text:"碁は基本的には相手が打っていない所を打つ方が良い。相手の後を追いかけてばかりいては、普通、勝てないとしたもの。", by:"畠さん"},
+      {text:"黒なのに、なぜ白の中で戦いを起こさなければならないのか。黒なのに白のほうへ行き過ぎている。白の中にばかり行って、やきもちを焼いているように見える。", by:"畠さん"},
+      {text:"石が逃げ出す方向は地にならない。（だから、相手の地模様を消すには、相手の石を追い立てて地模様へ雪崩れ込むことが有効）", by:"畠さん"},
+    ]
+  },
+  { id:"ch2", color:"#2a9fd6", label:"第2章", title:"強弱と手の掛け方", sub:"どこに手をかけるか",
+    quotes:[
+      {text:"基本的に、強いほうから打つのはいけない。", by:"畠さん"},
+      {text:"強いほうに押し付けるように打たなければいけない。ほとんどの場合、それは正しい。", by:"畠さん"},
+      {text:"自分の強いところでは堂々と戦う。これが大原則です。", by:"畠さん"},
+      {text:"自分の強いところにさらに手をかけて地にしたがる人が多いが、強いところに打たされるのは辛いと意識してください。", by:"畠さん"},
+      {text:"固く打つのは何のためか。それは、しばらくここには手をかけずに済ますためである。", by:"畠さん"},
+    ]
+  },
+  { id:"ch3", color:"#29aa6a", label:"第3章", title:"処理と攻防", sub:"弱い石をどう扱い、どう戦うか",
+    sections:[
+      { label:"▼ 弱石処理（逃・生・捨・振）", quotes:[
+        {text:"戦いが起きた時、最初に考えるべきことは弱い石の処理の仕方です。それには4通りあります。生かす手が2通り（逃げる、生きる）、捨てる手が2通り（手抜く、フリカワる）。この判断があってはじめて、どこに打てばよいかを考えることができる。", by:"畠さん"},
+        {text:"カタツキに手を抜いたのだから、押さえる一手である。", by:"畠さん"},
+        {text:"生きている石から動いて、相手の石を取りに行ってはいけない。", by:"畠さん"},
+      ]},
+      { label:"▼ さばき・軽さ（捨て石・コウ）", quotes:[
+        {text:"さばくきっかけを作るには、相手の弱いところを探すとよい。", by:"畠さん"},
+        {text:"さばきは難しい。さばきを勉強するには、強い人と打って模様を張り、入ってこさせるとよい。そして、強い人がどうさばくかを見る。さばきは身銭を切らないと身につかない。", by:"畠さん"},
+        {text:"相手が力を溜めた近くに打つのは、たいてい良い手ではない。さばいて、どうやって捨てるかを考えるほうがよい。", by:"畠さん"},
+        {text:"外から打って捨てるなら、中では何もしないほうがよい。そもそもゴリゴリと打つ人は、捨てることなど考えないのだろうが。", by:"畠さん"},
+        {text:"いつでも打てる手をすぐに打ってはいけない。コウ材に取っておけばよい。", by:"畠さん"},
+        {text:"コウに弱い碁形では妥協しなければならないが、コウに強い碁形なら反発できる。コウに強い碁形を作ることが肝心である。", by:"畠さん"},
+      ]},
+      { label:"▼ 攻め（相手に嫌な選択を迫る）", quotes:[
+        {text:"攻めるための最高の状態は、「自分の石も弱い」が、相手の石よりは少し強い状態である。その状態をキープしておくことが大切で、これが逆転すると反撃されてしまう。", by:"畠さん"},
+        {text:"今以上に棋力向上を目指すなら、自分の石を強くしてから相手を咎めに行ってはいけない。何が起きるか分からないから、みんな安全にしてから攻めようとしたがるのだが、それがいけない。", by:"畠さん"},
+        {text:"相手が打ちたくないところへ、打たせるようにもっていけばよい。", by:"畠さん"},
+        {text:"取りにいくより、逃すほうが得。取りにいくのではなく、逃げてくださいと追い立てる。", by:"畠さん"},
+        {text:"「今なら捨てにくいでしょ」という問いかけが大事。石が取れればよいのではない。取りたくないのだ。相手に逃げてほしい。", by:"畠さん"},
+        {text:"相手の石を取るなら大きく取らないと。小さく取りに行くから捨てられる。", by:"畠さん"},
+      ]},
+    ]
+  },
+  { id:"ch4", color:"#a060d8", label:"第4章", title:"価値と選択", sub:"どこが一番大きいか",
+    quotes:[
+      {text:"左上の打ち方が分からないなら、まずは左下など他の形を決めてから、左上の打ち方を考える。", by:"畠さん"},
+      {text:"世の中で一番大きいのはここなの？そういう判断をしたのですか？大事なことは、「一番」大きいと判断したかどうか、ということ。", by:"畠さん"},
+      {text:"今打っている箇所を打ち切った後に、どこへ打つべきかを考える。大きいところがあるなら、先手を取るように打つ。それほど大きいところがないなら、後手でしっかり打てばよい。", by:"畠さん"},
+      {text:"打たれたら嫌なところに先回りして打つことと、打たれても構わないようにしておくことには、同じ価値がある。", by:"畠さん"},
+      {text:"今は模様の接点に打つ一手。相手のすきを攻めたくなるが、それは後の楽しみに取っておけばよい。", by:"畠さん"},
+      {text:"打ち込む隙が3か所もあるから、相手は一手で守れない。だから、入っていくのはまだ早い。取るものを取ってから行くのがよい。", by:"畠さん"},
+      {text:"五間幅なら、普通は囲って良いと言われている。", by:"畠さん"},
+    ]
+  },
+  { id:"hojo", color:"#a08060", label:"補助", title:"心を整える", sub:"姿勢・覚悟",
+    quotes:[
+      {text:"前に打った手だから仕方がないという言い訳は、囲碁ではいけません。前に打った手を活かすように打たなければいけないのです。", by:"畠さん"},
+      {text:"妥協すると余計に危ない。", by:"畠さん"},
+    ]
+  },
+];
+
+const ALL_QUOTES = [];
+CHAPTERS.forEach(ch => {
+  if (ch.quotes) ch.quotes.forEach((q,qi) => ALL_QUOTES.push({...q, chapterLabel:ch.label, chapterTitle:ch.title, color:ch.color, qid:`${ch.id}-${qi}`}));
+  if (ch.sections) ch.sections.forEach(sec => sec.quotes.forEach((q,qi) => ALL_QUOTES.push({...q, chapterLabel:ch.label, chapterTitle:ch.title, color:ch.color, qid:`${ch.id}-${sec.label.slice(0,4)}-${qi}`})));
+});
+
+const COLORS = [
+  {key:"red",    hex:"#e74c3c", label:"赤"},
+  {key:"blue",   hex:"#2980b9", label:"青"},
+  {key:"green",  hex:"#27ae60", label:"緑"},
+  {key:"yellow", hex:"#f39c12", label:"黄"},
+  {key:"purple", hex:"#8e44ad", label:"紫"},
+  {key:"orange", hex:"#e67e22", label:"橙"},
+];
+
+// ---------- グループ判定 ----------
+const urlParams  = new URLSearchParams(window.location.search);
+const groupParam = urlParams.get("group");
+const hasGroup   = !!groupParam;
+if (hasGroup) document.getElementById("yamaарuki-label").style.display = "block";
+if (!hasGroup) document.getElementById("tab-settings").style.display = "none";
+
+// ---------- Firebase ----------
+let bookmarksRef = null, colorsRef = null;
+let bookmarkData = {}, takenColors = {};
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+if (hasGroup && isConfigured) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    bookmarksRef = firebase.database().ref(`goroku-bookmarks/${groupParam}`);
+    bookmarksRef.on("value", snap => { bookmarkData = snap.val() || {}; renderGoroku(); });
+    colorsRef = firebase.database().ref(`goroku-colors/${groupParam}`);
+    colorsRef.on("value", snap => { takenColors = snap.val() || {}; renderColorPicker(); updateColorCurrent(); });
+  } catch(e) { console.error("Firebase init failed:", e); }
+}
+
+// ---------- 自分の色 ----------
+let myColor = localStorage.getItem("gorokuMyColor") || null;
+function getMyColorHex() { const c = COLORS.find(c => c.key === myColor); return c ? c.hex : null; }
+
+// ---------- しおり ----------
+function toggleBookmark(qid) {
+  if (!hasGroup || !bookmarksRef || !myColor) return;
+  if ((bookmarkData[qid] || {})[myColor]) bookmarksRef.child(qid).child(myColor).remove();
+  else bookmarksRef.child(qid).child(myColor).set(true);
+}
+function isBookmarked(qid) { return !!(myColor && (bookmarkData[qid] || {})[myColor]); }
+function getBookmarkDots(qid) {
+  return COLORS.filter(c => (bookmarkData[qid] || {})[c.key])
+    .map(c => `<span class="bookmark-dot" style="background:${c.hex}" title="${c.label}"></span>`).join("");
+}
+
+// ---------- 語録タブ ----------
+function renderGoroku() {
+  const panel = document.getElementById("panel-goroku");
+  const openIds = [...panel.querySelectorAll(".chapter-body.open")].map(el => el.dataset.id);
+  panel.innerHTML = CHAPTERS.map(ch => {
+    let quotesHTML = "";
+    if (ch.quotes) quotesHTML = ch.quotes.map((q,qi) => quoteCardHTML(q, `${ch.id}-${qi}`, ch.color)).join("");
+    if (ch.sections) quotesHTML = ch.sections.map(sec =>
+      `<div style="padding:6px 14px 2px;font-size:0.72rem;color:#999;font-family:sans-serif">${sec.label}</div>`
+      + sec.quotes.map((q,qi) => quoteCardHTML(q, `${ch.id}-${sec.label.slice(0,4)}-${qi}`, ch.color)).join("")
+    ).join("");
+    return `
+      <button class="chapter-toggle ${openIds.includes(ch.id)?'open':''}" data-id="${ch.id}">
+        <div>
+          <div class="chapter-toggle-label" style="color:${ch.color}">${ch.label}</div>
+          <div class="chapter-toggle-title">${ch.title}</div>
+          <div class="chapter-toggle-sub">${ch.sub}</div>
+        </div>
+        <span class="chapter-arrow" style="color:${ch.color}">▶</span>
+      </button>
+      <div class="chapter-body ${openIds.includes(ch.id)?'open':''}" data-id="${ch.id}">${quotesHTML}</div>`;
+  }).join("");
+
+  panel.querySelectorAll(".chapter-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const body = panel.querySelector(`.chapter-body[data-id="${btn.dataset.id}"]`);
+      btn.classList.toggle("open"); body.classList.toggle("open");
+    });
+  });
+  if (hasGroup) panel.querySelectorAll(".bookmark-btn").forEach(btn => {
+    btn.addEventListener("click", () => toggleBookmark(btn.dataset.qid));
+  });
+}
+
+function quoteCardHTML(q, qid, color) {
+  const dots = hasGroup ? getBookmarkDots(qid) : "";
+  const bm   = isBookmarked(qid);
+  const hex  = getMyColorHex();
+  const btn  = hasGroup ? `<button class="bookmark-btn ${bm?'bookmarked':''}" data-qid="${qid}" style="${bm?`color:${hex};border-color:${hex}`:'color:#bbb'}">🔖</button>` : "";
+  return `<div class="quote-card">
+    <div class="quote-text" style="border-left-color:${color}">${q.text}</div>
+    <div class="quote-meta"><span>― ${q.by}</span><div style="display:flex;align-items:center;gap:5px"><div class="bookmark-dots">${dots}</div>${btn}</div></div>
+  </div>`;
+}
+
+// ---------- 設定タブ ----------
+function renderSettings() {
+  const body = document.getElementById("settings-body");
+  if (!body) return;
+  if (!hasGroup) {
+    body.innerHTML = `<p style="font-size:0.84rem;color:#888;line-height:1.7;font-family:sans-serif">しおり機能は山あるきグループ向けです。<br>グループ用URLからアクセスすると色の選択・共有ができます。</p>`;
+    return;
+  }
+  body.innerHTML = `
+    <p style="font-size:0.84rem;color:#666;margin:0 0 16px;line-height:1.6">自分のしおりの色を選んでください。仲間内でそれぞれ違う色を使います。</p>
+    <div id="color-picker-inline" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <div id="color-current" style="font-size:0.84rem;color:#888;font-family:sans-serif"></div>`;
+  renderColorPicker();
+  updateColorCurrent();
+}
+
+function renderColorPicker() {
+  const container = document.getElementById("color-picker-inline");
+  if (!container) return;
+  container.innerHTML = COLORS.map(c => {
+    const isMine  = myColor === c.key;
+    const isTaken = !isMine && takenColors[c.key];
+    return `<div style="text-align:center;cursor:${isTaken?'not-allowed':'pointer'};opacity:${isTaken?0.35:1}" data-key="${c.key}" data-taken="${isTaken}" class="color-pick-btn">
+      <div style="width:44px;height:44px;border-radius:50%;background:${c.hex};border:3px solid ${isMine?'#2c3e50':'transparent'};margin:0 auto 4px;position:relative">
+        ${isMine?'<span style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;font-size:1.1rem">✓</span>':''}
+      </div>
+      <div style="font-size:0.7rem;color:${isTaken?'#bbb':'#888'};font-family:sans-serif">${c.label}${isTaken?'<br>使用中':''}</div>
+    </div>`;
+  }).join("");
+  container.querySelectorAll(".color-pick-btn").forEach(el => {
+    el.addEventListener("click", () => {
+      if (el.dataset.taken === "true") return;
+      if (myColor && colorsRef) colorsRef.child(myColor).remove();
+      myColor = el.dataset.key;
+      localStorage.setItem("gorokuMyColor", myColor);
+      if (colorsRef) colorsRef.child(myColor).set(true);
+      renderColorPicker(); updateColorCurrent(); renderGoroku();
+      showToast(`${COLORS.find(c=>c.key===myColor).label}に設定しました`);
+    });
+  });
+}
+function updateColorCurrent() {
+  const el = document.getElementById("color-current");
+  if (!el) return;
+  if (myColor) { const c = COLORS.find(c=>c.key===myColor); el.innerHTML=`現在の色：<span style="color:${c.hex};font-weight:bold">● ${c.label}</span>`; }
+  else el.textContent = "まだ色が選ばれていません";
+}
+
+// ---------- タブ ----------
+// ---------- Sticky nav top adjustment ----------
+(function() {
+  function adjustNavTop() {
+    const header = document.getElementById("header");
+    const nav = document.getElementById("nav");
+    if (header && nav) nav.style.top = header.offsetHeight + "px";
+  }
+  adjustNavTop();
+  window.addEventListener("resize", adjustNavTop);
+})();
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "settings") { renderSettings(); }
+  });
+});
+
+// ---------- リセット ----------
+document.getElementById("chakugan-reset").addEventListener("click", () => {
+  document.querySelectorAll("#panel-chakugan input[type=checkbox]").forEach(cb => cb.checked = false);
+  document.querySelectorAll("#panel-chakugan details").forEach(d => d.open = false);
+});
+document.getElementById("manabi-reset").addEventListener("click", () => {
+  document.querySelectorAll("#panel-manabi input[type=checkbox]").forEach(cb => cb.checked = false);
+  document.querySelectorAll("#panel-manabi details").forEach(d => d.open = false);
+});
+
+// ---------- トースト ----------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.style.display = "block";
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = "none", 2500);
+}
+
+// ---------- 初期描画 ----------
+renderGoroku();
+</script>
+</body>
+</html>
