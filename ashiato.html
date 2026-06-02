@@ -360,6 +360,9 @@ if (isConfigured) {
   renderKiroku();
   renderNakama();
   renderKibou();
+  renderMemberAdmin();
+  buildMemberChecks();
+  buildProposerSelect();
 }
 
 // ---------- 同期ステータス ----------
@@ -616,6 +619,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "settings") { renderMemberAdmin(); }
   });
 });
 
