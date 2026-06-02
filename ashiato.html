@@ -1,0 +1,632 @@
+<!--
+================================================================================
+  このアプリについて
+  足あと — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  山あるきメンバーの活動記録を共有するアプリ。
+  どこに行ったか、誰が参加したか、次はどこに行きたいかを仲間と共有する。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 ashiato.html で完結）
+  - Firebase Realtime Database によるリアルタイム同期
+  - index.html（山あるき）からリンク
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（CDN読み込み）
+  - Google Fonts（Noto Sans JP）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - 新技術の導入より、継続して利用しやすい構成を優先する
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読みやすく・触りやすく・壊れにくい構成を選ぶ
+  ・新しい技術より、長く使い続けられることを優先する
+  ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
+
+【主な機能（現時点）】
+  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・削除
+  - 👥仲間タブ：メンバー別参加回数・参加率の表示
+  - 🌟希望タブ：行き先希望の一覧・追加・投票（名前選択式トグル）
+  - ⚙️設定タブ：管理者の仕事（メンバー管理）
+
+【今後の改良候補】
+  - 活動の写真添付
+  - 行き先マップ表示
+  - 希望地の実現済みマーク
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>足あと</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    html { background: #fcfaf2; }
+    body {
+      margin: 0; padding: 0;
+      font-family: "Noto Sans JP", "Hiragino Kaku Gothic ProN", sans-serif;
+      background: #fcfaf2;
+      color: #333;
+    }
+    #app { max-width: 500px; margin: 0 auto; min-height: 100vh; background: #fcfaf2; }
+
+    /* ヘッダー */
+    #header { background: #3a5c4a; color: #f0f5f0; padding: 14px 18px 0; }
+    #yamaарuki-label { font-size: 0.72rem; color: #8ab4a0; font-family: sans-serif; letter-spacing: 0.08em; margin-bottom: 2px; }
+    #header h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0.05em; color: #f0f5f0; }
+    #header-sub { font-size: 0.78rem; color: #8ab4a0; margin: 3px 0 14px; font-family: sans-serif; }
+
+    /* タブ */
+    #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; }
+    .tab-btn {
+      flex: 1; background: none; border: none;
+      border-bottom: 3px solid transparent;
+      color: #888; padding: 10px 0;
+      font-size: 0.8rem; font-family: inherit; cursor: pointer;
+    }
+    .tab-btn.active { color: #3a5c4a; border-bottom-color: #7ab48a; font-weight: bold; background: #fff; }
+
+    /* コンテンツ */
+    #content { padding: 16px; background: #fcfaf2; }
+    .panel { display: none; background: #fcfaf2; }
+    .panel.active { display: block; }
+
+    /* 統計カード */
+    .stat-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .stat-card {
+      flex: 1; background: #fff; border: 1px solid #e0dbcd;
+      border-radius: 10px; padding: 14px 10px;
+      text-align: center;
+    }
+    .stat-num { font-size: 1.8rem; font-weight: bold; color: #3a5c4a; }
+    .stat-label { font-size: 0.72rem; color: #888; font-family: sans-serif; margin-top: 2px; }
+
+    /* カード */
+    .card {
+      background: #fff; border: 1px solid #e0dbcd;
+      border-radius: 10px; padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .card-title { font-size: 0.92rem; font-weight: bold; color: #2c3e50; margin-bottom: 4px; }
+    .card-sub { font-size: 0.78rem; color: #888; font-family: sans-serif; }
+
+    /* 追加ボタン */
+    .add-btn {
+      width: 100%; background: #3a5c4a; color: #f0f5f0;
+      border: none; border-radius: 10px; padding: 12px;
+      font-size: 0.9rem; font-family: inherit;
+      cursor: pointer; margin-bottom: 14px;
+    }
+
+    /* フォーム */
+    .form-box {
+      background: #fff; border: 1px solid #e0dbcd;
+      border-radius: 10px; padding: 14px;
+      margin-bottom: 14px; display: none;
+    }
+    .form-box.open { display: block; }
+    .fg { margin-bottom: 10px; }
+    .fg label { font-size: 0.8rem; color: #666; font-family: sans-serif; display: block; margin-bottom: 4px; }
+    .fg input, .fg textarea, .fg select {
+      width: 100%; border: 1px solid #ddd; border-radius: 6px;
+      padding: 8px 10px; font-size: 0.88rem; font-family: inherit;
+      background: #fff; color: #333;
+    }
+    .fg textarea { resize: vertical; }
+    .member-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+    .member-check-btn {
+      background: #f0ede4; border: 1px solid #ddd;
+      border-radius: 20px; padding: 4px 12px;
+      font-size: 0.8rem; cursor: pointer;
+      font-family: inherit; color: #555;
+    }
+    .member-check-btn.selected {
+      background: #3a5c4a; color: #fff; border-color: #3a5c4a;
+    }
+    .form-submit {
+      background: #3a5c4a; color: #fff; border: none;
+      border-radius: 8px; padding: 10px 20px;
+      font-size: 0.88rem; font-family: inherit;
+      cursor: pointer; margin-right: 8px;
+    }
+    .form-cancel {
+      background: #f0ede4; border: 1px solid #ddd;
+      border-radius: 8px; padding: 10px 16px;
+      font-size: 0.88rem; font-family: inherit; cursor: pointer;
+    }
+
+    /* 仲間バー */
+    .nakama-bar-wrap { height: 8px; background: #f0ede4; border-radius: 4px; margin-top: 6px; }
+    .nakama-bar { height: 8px; background: #3a5c4a; border-radius: 4px; transition: width 0.4s; }
+
+    /* 希望 */
+    .kibou-card { background: #fff; border: 1px solid #e0dbcd; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .kibou-title { font-size: 0.95rem; font-weight: bold; color: #2c3e50; margin-bottom: 6px; }
+    .kibou-votes { font-size: 0.78rem; color: #666; font-family: sans-serif; margin-bottom: 8px; }
+    .vote-btn {
+      background: #f0ede4; border: 1px solid #ddd;
+      border-radius: 20px; padding: 4px 14px;
+      font-size: 0.8rem; cursor: pointer; font-family: inherit;
+    }
+    .vote-btn.voted { background: #3a5c4a; color: #fff; border-color: #3a5c4a; }
+    .vote-picker {
+      display: none; margin-top: 8px; padding: 8px;
+      background: #faf8f0; border: 1px solid #e0dbcd;
+      border-radius: 8px;
+    }
+    .vote-picker-label { font-size: 0.76rem; color: #888; font-family: sans-serif; margin-bottom: 6px; }
+    .vote-name-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    .vote-name-btn {
+      background: #f0ede4; border: 1px solid #ddd;
+      border-radius: 6px; padding: 4px 12px;
+      font-size: 0.8rem; cursor: pointer; font-family: inherit;
+    }
+    .del-btn-sm {
+      background: none; border: none; color: #ccc;
+      font-size: 0.75rem; cursor: pointer; float: right;
+      font-family: sans-serif;
+    }
+
+    /* セクション見出し */
+    .section-title {
+      font-size: 0.72rem; color: #3a5c4a;
+      font-family: sans-serif; letter-spacing: 0.05em;
+      border-left: 3px solid #7ab48a;
+      padding-left: 8px; margin: 0 0 12px;
+    }
+
+    /* 管理者折りたたみ */
+    .admin-toggle {
+      cursor: pointer; padding: 12px 0;
+      display: flex; align-items: center; gap: 8px;
+      color: #3a5c4a; font-weight: bold; font-size: 1rem;
+      border-bottom: 1px solid #e0dbcd;
+    }
+    .admin-body { display: none; margin-top: 14px; }
+
+    /* トースト */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #2c3e50; color: #fff; padding: 10px 20px;
+      border-radius: 20px; font-size: 0.83rem; font-family: sans-serif;
+      display: none; z-index: 999; white-space: nowrap;
+    }
+
+    /* 同期ステータス */
+    #sync-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 0.75rem; color: #8ab4a0; font-family: sans-serif; }
+    #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; display: inline-block; }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <div id="header">
+    <div id="yamaарuki-label">山あるき</div>
+    <h1>🐾 足あと</h1>
+    <div id="header-sub">仲間との活動履歴</div>
+    <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
+    <div id="nav">
+      <button class="tab-btn active" data-tab="kiroku">📋記録</button>
+      <button class="tab-btn" data-tab="nakama">👥仲間</button>
+      <button class="tab-btn" data-tab="kibou">🌟希望</button>
+      <button class="tab-btn" data-tab="settings">⚙️設定</button>
+    </div>
+  </div>
+
+  <div id="content">
+
+    <!-- 📋 記録パネル -->
+    <div class="panel active" id="panel-kiroku">
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-num" id="stat-count">0</div><div class="stat-label">活動回数</div></div>
+        <div class="stat-card"><div class="stat-num" id="stat-places">0</div><div class="stat-label">訪問先</div></div>
+      </div>
+
+      <button class="add-btn" id="add-activity-btn">＋ 活動を追加</button>
+
+      <div class="form-box" id="activity-form">
+        <div class="fg"><label>活動日</label><input type="date" id="act-date"></div>
+        <div class="fg"><label>活動名・場所</label><input type="text" id="act-name" placeholder="例：川越散策"></div>
+        <div class="fg">
+          <label>参加メンバー</label>
+          <div class="member-checks" id="act-members"></div>
+        </div>
+        <div class="fg"><label>メモ（任意）</label><textarea id="act-note" rows="2" placeholder="感想など"></textarea></div>
+        <button class="form-submit" id="act-submit">登録する</button>
+        <button class="form-cancel" id="act-cancel">キャンセル</button>
+      </div>
+
+      <div id="kiroku-list"></div>
+    </div>
+
+    <!-- 👥 仲間パネル -->
+    <div class="panel" id="panel-nakama">
+      <div id="nakama-list"></div>
+    </div>
+
+    <!-- 🌟 希望パネル -->
+    <div class="panel" id="panel-kibou">
+      <button class="add-btn" id="add-kibou-btn">＋ 行き先を追加</button>
+
+      <div class="form-box" id="kibou-form">
+        <div class="fg"><label>行き先・やりたいこと</label><input type="text" id="kib-place" placeholder="例：鎌倉"></div>
+        <div class="fg">
+          <label>提案者</label>
+          <select id="kib-proposer">
+            <option value="">（選択してください）</option>
+          </select>
+        </div>
+        <button class="form-submit" id="kib-submit">追加する</button>
+        <button class="form-cancel" id="kib-cancel">キャンセル</button>
+      </div>
+
+      <div id="kibou-list"></div>
+    </div>
+
+    <!-- ⚙️ 設定パネル -->
+    <div class="panel" id="panel-settings">
+      <div class="admin-toggle" id="admin-toggle">
+        <span id="admin-arrow">▶</span>
+        <span>管理者の仕事</span>
+      </div>
+      <div class="admin-body" id="admin-body">
+        <div class="section-title" style="margin-top:14px">メンバー設定</div>
+        <p style="font-size:0.84rem;color:#666;margin:0 0 10px;line-height:1.6">メンバーを追加・削除できます。変更すると全員の画面に反映されます。</p>
+        <div id="member-list-admin" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px"></div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="new-member-input" placeholder="名前を入力" style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px 10px;font-size:0.88rem;font-family:inherit">
+          <button id="add-member-btn" style="background:#3a5c4a;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:0.88rem;font-family:inherit;cursor:pointer">追加</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div id="toast"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+  authDomain:        "hiking-558a9.firebaseapp.com",
+  databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+  projectId:         "hiking-558a9",
+  storageBucket:     "hiking-558a9.firebasestorage.app",
+  messagingSenderId: "1066293850319",
+  appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+};
+
+// ---------- State ----------
+let activities = {};
+let wishes     = {};
+let members    = [];
+let actFormOpen = false;
+let kibFormOpen = false;
+let selectedActMembers = new Set();
+
+let activitiesRef = null;
+let wishesRef     = null;
+let configRef     = null;
+
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+if (isConfigured) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    activitiesRef = firebase.database().ref("ashiato/activities");
+    wishesRef     = firebase.database().ref("ashiato/wishes");
+    configRef     = firebase.database().ref("ashiato/config");
+
+    activitiesRef.on("value", snap => {
+      activities = snap.val() || {};
+      renderKiroku();
+      renderNakama();
+    });
+    wishesRef.on("value", snap => {
+      wishes = snap.val() || {};
+      renderKibou();
+    });
+    configRef.on("value", snap => {
+      const cfg = snap.val() || {};
+      members = cfg.members || [];
+      renderMemberAdmin();
+      buildMemberChecks();
+      buildProposerSelect();
+      setSyncStatus(true);
+    }, () => setSyncStatus(false));
+  } catch(e) {
+    console.error("Firebase init failed:", e);
+    setSyncStatus(false);
+  }
+} else {
+  setSyncStatus(false);
+  renderKiroku();
+  renderNakama();
+  renderKibou();
+}
+
+// ---------- 同期ステータス ----------
+function setSyncStatus(online) {
+  const dot = document.getElementById("sync-dot");
+  const lbl = document.getElementById("sync-label");
+  if (online) {
+    dot.style.background = "#4caf50";
+    const now = new Date();
+    lbl.textContent = `リアルタイム同期中 · ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  } else {
+    dot.style.background = "#e74c3c";
+    lbl.textContent = "オフライン";
+  }
+}
+setInterval(() => { if (document.getElementById("sync-dot").style.background === "rgb(76, 175, 80)") setSyncStatus(true); }, 10000);
+function pad(n) { return String(n).padStart(2, "0"); }
+
+// ---------- 記録タブ ----------
+function renderKiroku() {
+  const list   = Object.values(activities);
+  const places = new Set(list.map(a => a.name)).size;
+  document.getElementById("stat-count").textContent  = list.length;
+  document.getElementById("stat-places").textContent = places;
+
+  const sorted = list.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  document.getElementById("kiroku-list").innerHTML = sorted.map(act => {
+    const id     = Object.keys(activities).find(k => activities[k] === act) || "";
+    const mems   = act.members ? act.members.join("・") : "";
+    const count  = act.members ? act.members.length : 0;
+    const note   = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
+    return `
+      <div class="card">
+        <button class="del-btn-sm" data-id="${id}" onclick="deleteActivity('${id}')">削除</button>
+        <div class="card-title">${act.date || ""} ${act.name || ""}</div>
+        <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
+        ${note}
+      </div>`;
+  }).join("") || `<p style="color:#999;font-size:0.88rem">まだ活動記録がありません。</p>`;
+}
+
+function deleteActivity(id) {
+  if (!confirm("この活動記録を削除しますか？")) return;
+  if (activitiesRef) activitiesRef.child(id).remove();
+  showToast("削除しました");
+}
+
+// ---------- 仲間タブ ----------
+function renderNakama() {
+  const counts = {};
+  members.forEach(m => counts[m] = 0);
+  Object.values(activities).forEach(act => {
+    (act.members || []).forEach(m => { counts[m] = (counts[m] || 0) + 1; });
+  });
+  const total = Object.values(activities).length || 1;
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+
+  document.getElementById("nakama-list").innerHTML = sorted.length
+    ? sorted.map(([name, cnt]) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <span style="font-weight:bold;color:#2c3e50">${name}</span>
+          <span style="font-size:0.8rem;color:#888;font-family:sans-serif">${cnt}回 / ${Math.round(cnt/total*100)}%</span>
+        </div>
+        <div class="nakama-bar-wrap">
+          <div class="nakama-bar" style="width:${Math.round(cnt/total*100)}%"></div>
+        </div>
+      </div>`).join("")
+    : `<p style="color:#999;font-size:0.88rem">メンバーが設定されていません。</p>`;
+}
+
+// ---------- 希望タブ ----------
+function renderKibou() {
+  const list = Object.entries(wishes).sort((a,b) => {
+    const va = Object.keys(b[1].votes||{}).length;
+    const vb = Object.keys(a[1].votes||{}).length;
+    return va - vb;
+  });
+
+  document.getElementById("kibou-list").innerHTML = list.length
+    ? list.map(([id, w]) => {
+        const votes = Object.keys(w.votes || {});
+        const memberNames = members.map(m =>
+          `<button class="vote-name-btn" data-id="${id}" data-name="${m}">${m}</button>`
+        ).join("");
+        return `
+          <div class="kibou-card" id="kibou-${id}">
+            <button class="del-btn-sm" onclick="deleteWish('${id}')">削除</button>
+            <div class="kibou-title">${w.place || ""}</div>
+            <div class="kibou-votes">
+              🙋 ${votes.length}名${votes.length ? "：" + votes.join("・") : ""}
+              ${w.proposer ? `<span style="color:#bbb;margin-left:8px">提案：${w.proposer}</span>` : ""}
+            </div>
+            <button class="vote-btn" data-id="${id}">行きたい！</button>
+            <div class="vote-picker" id="picker-${id}">
+              <div class="vote-picker-label">あなたの名前を選んでください</div>
+              <div class="vote-name-btns">${memberNames}</div>
+            </div>
+          </div>`;
+      }).join("")
+    : `<p style="color:#999;font-size:0.88rem">まだ希望地がありません。</p>`;
+
+  // 行きたいボタン
+  document.querySelectorAll(".vote-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const picker = document.getElementById(`picker-${id}`);
+      const isOpen = picker.style.display !== "none";
+      document.querySelectorAll(".vote-picker").forEach(p => p.style.display = "none");
+      picker.style.display = isOpen ? "none" : "";
+    });
+  });
+
+  // 名前ボタン → 投票トグル
+  document.querySelectorAll(".vote-name-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id   = btn.dataset.id;
+      const name = btn.dataset.name;
+      const current = (wishes[id]?.votes || {})[name];
+      if (current) { if (wishesRef) wishesRef.child(id).child("votes").child(name).remove(); }
+      else { if (wishesRef) wishesRef.child(id).child("votes").child(name).set(true); }
+      document.getElementById(`picker-${id}`).style.display = "none";
+    });
+  });
+}
+
+function deleteWish(id) {
+  if (!confirm("この希望を削除しますか？")) return;
+  if (wishesRef) wishesRef.child(id).remove();
+  showToast("削除しました");
+}
+
+// ---------- フォーム（記録追加） ----------
+document.getElementById("add-activity-btn").addEventListener("click", () => {
+  actFormOpen = !actFormOpen;
+  document.getElementById("activity-form").className = `form-box ${actFormOpen ? "open" : ""}`;
+  if (actFormOpen) {
+    const today = new Date();
+    document.getElementById("act-date").value = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    document.getElementById("act-name").value = "";
+    document.getElementById("act-note").value = "";
+    selectedActMembers.clear();
+    buildMemberChecks();
+  }
+});
+
+document.getElementById("act-cancel").addEventListener("click", () => {
+  actFormOpen = false;
+  document.getElementById("activity-form").className = "form-box";
+});
+
+document.getElementById("act-submit").addEventListener("click", () => {
+  const date = document.getElementById("act-date").value;
+  const name = document.getElementById("act-name").value.trim();
+  const note = document.getElementById("act-note").value.trim();
+  if (!date || !name) { alert("活動日と活動名を入力してください"); return; }
+  if (activitiesRef) activitiesRef.push({
+    date: date.replace(/-/g, "/"),
+    name,
+    members: [...selectedActMembers],
+    note: note || null,
+  });
+  actFormOpen = false;
+  document.getElementById("activity-form").className = "form-box";
+  showToast("活動を登録しました");
+});
+
+function buildMemberChecks() {
+  const wrap = document.getElementById("act-members");
+  if (!wrap) return;
+  wrap.innerHTML = members.map(m =>
+    `<button class="member-check-btn ${selectedActMembers.has(m) ? "selected" : ""}" data-name="${m}">${m}</button>`
+  ).join("");
+  wrap.querySelectorAll(".member-check-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.name;
+      if (selectedActMembers.has(name)) selectedActMembers.delete(name);
+      else selectedActMembers.add(name);
+      btn.classList.toggle("selected");
+    });
+  });
+}
+
+// ---------- フォーム（希望追加） ----------
+document.getElementById("add-kibou-btn").addEventListener("click", () => {
+  kibFormOpen = !kibFormOpen;
+  document.getElementById("kibou-form").className = `form-box ${kibFormOpen ? "open" : ""}`;
+  if (kibFormOpen) { document.getElementById("kib-place").value = ""; }
+});
+
+document.getElementById("kib-cancel").addEventListener("click", () => {
+  kibFormOpen = false;
+  document.getElementById("kibou-form").className = "form-box";
+});
+
+document.getElementById("kib-submit").addEventListener("click", () => {
+  const place    = document.getElementById("kib-place").value.trim();
+  const proposer = document.getElementById("kib-proposer").value;
+  if (!place) { alert("行き先を入力してください"); return; }
+  if (!proposer) { alert("提案者を選択してください"); return; }
+  if (wishesRef) wishesRef.push({ place, proposer, votes: {} });
+  kibFormOpen = false;
+  document.getElementById("kibou-form").className = "form-box";
+  showToast("希望を追加しました");
+});
+
+function buildProposerSelect() {
+  const sel = document.getElementById("kib-proposer");
+  sel.innerHTML = `<option value="">（選択してください）</option>`
+    + members.map(m => `<option value="${m}">${m}</option>`).join("");
+}
+
+// ---------- 設定タブ（メンバー管理） ----------
+document.getElementById("admin-toggle").addEventListener("click", () => {
+  const body  = document.getElementById("admin-body");
+  const arrow = document.getElementById("admin-arrow");
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "";
+  arrow.textContent  = isOpen ? "▶" : "▼";
+});
+
+function renderMemberAdmin() {
+  const wrap = document.getElementById("member-list-admin");
+  if (!wrap) return;
+  wrap.innerHTML = members.map(m =>
+    `<span style="background:#f0ede4;border:1px solid #ddd;border-radius:20px;padding:4px 10px;font-size:0.82rem;display:inline-flex;align-items:center;gap:6px">
+      ${m}
+      <button onclick="removeMember('${m}')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:0.8rem;padding:0">✕</button>
+    </span>`
+  ).join("");
+}
+
+document.getElementById("add-member-btn").addEventListener("click", () => {
+  const input = document.getElementById("new-member-input");
+  const name  = input.value.trim();
+  if (!name) return;
+  if (members.includes(name)) { alert("すでに登録されています"); return; }
+  const newMembers = [...members, name];
+  if (configRef) configRef.update({ members: newMembers });
+  input.value = "";
+  showToast(`${name}を追加しました`);
+});
+
+function removeMember(name) {
+  if (!confirm(`${name}をメンバーから削除しますか？`)) return;
+  if (configRef) configRef.update({ members: members.filter(m => m !== name) });
+  showToast(`${name}を削除しました`);
+}
+
+// ---------- タブ ----------
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- トースト ----------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.style.display = "block";
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = "none", 2500);
+}
+</script>
+</body>
+</html>
