@@ -364,6 +364,8 @@ if (isConfigured) {
       renderMemberAdmin();
       buildMemberChecks();
       buildProposerSelect();
+      renderKiroku();
+      renderKibou();
       setSyncStatus(true);
     }, () => setSyncStatus(false));
   } catch(e) {
