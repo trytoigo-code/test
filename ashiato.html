@@ -411,13 +411,13 @@ function renderKiroku() {
     const note  = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
     const dateVal = act.date ? act.date.replace(/\//g, "-") : "";
     const memberBtns = members.map(m =>
-      `<button class="member-check-btn ${(act.members||[]).includes(m) ? "selected" : ""}" data-name="${m}" onclick="toggleEditMember(this,'${id}')">${m}</button>`
+      `<button type="button" class="member-check-btn ${(act.members||[]).includes(m) ? "selected" : ""}" data-name="${m}" onclick="this.classList.toggle('selected')">${m}</button>`
     ).join("");
     return `
       <div class="card">
         <div class="card-btn-row">
-          <button class="edit-btn-sm" onclick="toggleActEdit('${id}')">修正</button>
-          <button class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
+          <button type="button" class="edit-btn-sm" onclick="toggleActEdit('${id}')">修正</button>
+          <button type="button" class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
         </div>
         <div class="card-title">${act.date || ""} ${act.name || ""}</div>
         <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
@@ -427,8 +427,8 @@ function renderKiroku() {
           <div class="fg"><label>活動名・場所</label><input type="text" id="ae-name-${id}" value="${(act.name||"").replace(/"/g,'&quot;')}"></div>
           <div class="fg"><label>参加メンバー</label><div class="member-checks" id="ae-members-${id}">${memberBtns}</div></div>
           <div class="fg"><label>メモ（任意）</label><textarea id="ae-note-${id}" rows="2">${act.note||""}</textarea></div>
-          <button class="form-submit" onclick="submitActEdit('${id}')">更新する</button>
-          <button class="form-cancel" onclick="toggleActEdit('${id}')">キャンセル</button>
+          <button type="button" class="form-submit" onclick="submitActEdit('${id}')">更新する</button>
+          <button type="button" class="form-cancel" onclick="toggleActEdit('${id}')">キャンセル</button>
         </div>
       </div>`;
   }).join("") || `<p style="color:#999;font-size:0.88rem">まだ活動記録がありません。</p>`;
@@ -437,10 +437,6 @@ function renderKiroku() {
 function toggleActEdit(id) {
   const form = document.getElementById(`act-edit-${id}`);
   form.classList.toggle("open");
-}
-
-function toggleEditMember(btn, id) {
-  btn.classList.toggle("selected");
 }
 
 function submitActEdit(id) {
