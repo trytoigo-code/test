@@ -178,15 +178,18 @@
       border-radius: 6px; padding: 4px 12px;
       font-size: 0.8rem; cursor: pointer; font-family: inherit;
     }
-    .del-btn-sm {
-      background: none; border: none; color: #ccc;
-      font-size: 0.75rem; cursor: pointer; float: right;
-      font-family: sans-serif;
+    .card-btn-row {
+      display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 6px;
     }
     .edit-btn-sm {
-      background: none; border: none; color: #8ab4a0;
-      font-size: 0.75rem; cursor: pointer; float: right;
-      font-family: sans-serif; margin-right: 6px;
+      background: #b89752; color: #fff; border: none;
+      padding: 5px 10px; border-radius: 4px; font-size: 0.78rem;
+      cursor: pointer; font-family: inherit;
+    }
+    .del-btn-sm {
+      background: #e74c3c; color: #fff; border: none;
+      padding: 5px 10px; border-radius: 4px; font-size: 0.78rem;
+      cursor: pointer; font-family: inherit;
     }
     .inline-edit-form {
       display: none; margin-top: 10px; padding: 10px;
@@ -412,8 +415,10 @@ function renderKiroku() {
     ).join("");
     return `
       <div class="card">
-        <button class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
-        <button class="edit-btn-sm" onclick="toggleActEdit('${id}')">編集</button>
+        <div class="card-btn-row">
+          <button class="edit-btn-sm" onclick="toggleActEdit('${id}')">修正</button>
+          <button class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
+        </div>
         <div class="card-title">${act.date || ""} ${act.name || ""}</div>
         <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
         ${note}
@@ -504,8 +509,10 @@ function renderKibou() {
         const noteDisp = w.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${w.note}</div>` : "";
         return `
           <div class="kibou-card" id="kibou-${id}">
-            <button class="del-btn-sm" onclick="deleteWish('${id}')">削除</button>
-            <button class="edit-btn-sm" onclick="toggleKibouEdit('${id}')">編集</button>
+            <div class="card-btn-row">
+              <button class="edit-btn-sm" onclick="toggleKibouEdit('${id}')">修正</button>
+              <button class="del-btn-sm" onclick="deleteWish('${id}')">削除</button>
+            </div>
             <div class="kibou-title">${w.place || ""}</div>
             <div class="kibou-votes">
               🙋 ${votes.length}名${votes.length ? "：" + votes.join("・") : ""}
