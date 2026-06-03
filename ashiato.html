@@ -221,7 +221,7 @@
 <div id="app">
 
   <div id="header">
-    <div id="yamaарuki-label">山あるき</div>
+    <div id="yamaарuki-label"></div>
     <h1>🐾 足あと</h1>
     <div id="header-sub">仲間との活動履歴</div>
     <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
@@ -369,6 +369,13 @@ if (isConfigured) {
 }
 
 // ---------- 同期ステータス ----------
+// 親ページタイトル表示
+(function() {
+  const params = new URLSearchParams(location.search);
+  const title  = params.get("title");
+  if (title) document.getElementById("yamaарuki-label").textContent = decodeURIComponent(title);
+})();
+
 function setSyncStatus(online) {
   const dot = document.getElementById("sync-dot");
   const lbl = document.getElementById("sync-label");
