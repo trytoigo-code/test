@@ -185,7 +185,7 @@
     }
     .inline-edit-form.open { display: block; }
     .yotei-badge { display:inline-block; background:#e67e22; color:#fff; font-size:0.72rem; font-weight:bold; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
-    .seq-num { font-size:0.75rem; color:#888; font-family:sans-serif; margin-bottom:4px; }
+    .seq-num { font-size:1.1rem; font-weight:bold; color:#3a5c4a; font-family:sans-serif; margin-bottom:6px; }
 
     /* セクション見出し */
     .section-title {
@@ -390,11 +390,10 @@ const KIND_LABELS = { "囲碁": "⚫⚪囲碁", "麻雀": "🀄麻雀" };
 
 function renderKiroku() {
   const sorted = Object.entries(activities).sort((a, b) => (b[1].date || "").localeCompare(a[1].date || ""));
-  // 予定を除いた実績だけで回数を付番（日付昇順で古い順にN回目）
-  const actualByDate = sorted.filter(([,a]) => !a.yotei).reverse();
+  // 全件を日付昇順で付番（予定も含む）
+  const allByDate = [...sorted].reverse();
   const seqMap = {};
-  actualByDate.forEach(([id,], i) => seqMap[id] = i + 1);
-  const total = actualByDate.length;
+  allByDate.forEach(([id,], i) => seqMap[id] = i + 1);
 
   document.getElementById("kiroku-list").innerHTML = sorted.map(([id, act]) => {
     const mems  = act.members ? act.members.join("・") : "";
@@ -412,9 +411,7 @@ function renderKiroku() {
       `<button type="button" class="member-check-btn ${actKinds.includes(k) ? "selected" : ""}" data-kind="${k}" onclick="this.classList.toggle('selected')">${KIND_LABELS[k]}</button>`
     ).join("");
     const yoteiBadge = act.yotei ? `<span class="yotei-badge">📅 予定</span>` : "";
-    const seqDisp = act.yotei
-      ? `<div class="seq-num">―<span>${yoteiBadge}</span></div>`
-      : `<div class="seq-num">${seqMap[id]}回目</div>`;
+    const seqDisp = `<div class="seq-num">${seqMap[id]}回目${act.yotei ? " " + yoteiBadge : ""}</div>`;
     const yoteiBtnSel = act.yotei ? "selected" : "";
     return `
       <div class="card">
