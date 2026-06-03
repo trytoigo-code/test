@@ -373,7 +373,19 @@ if (isConfigured) {
 (function() {
   const params = new URLSearchParams(location.search);
   const title  = params.get("title");
-  if (title) document.getElementById("yamaарuki-label").textContent = decodeURIComponent(title);
+  if (title) {
+    document.getElementById("yamaарuki-label").textContent = decodeURIComponent(title);
+  } else if (document.referrer) {
+    try {
+      const referrerPath = new URL(document.referrer).pathname;
+      const el = document.getElementById("yamaарuki-label");
+      // referrerがindex.htmlまたは/で終わる場合はdocument.titleを取得できないため
+      // referrerのpathname末尾がindex.htmlか/の場合に表示
+      if (/index\.html$|\/$/.test(referrerPath)) {
+        el.textContent = "山あるき";
+      }
+    } catch(e) {}
+  }
 })();
 
 function setSyncStatus(online) {
