@@ -88,14 +88,6 @@
     .panel.active { display: block; }
 
     /* 統計カード */
-    .stat-row { display: flex; gap: 10px; margin-bottom: 16px; }
-    .stat-card {
-      flex: 1; background: #fff; border: 1px solid #e0dbcd;
-      border-radius: 10px; padding: 14px 10px;
-      text-align: center;
-    }
-    .stat-num { font-size: 1.8rem; font-weight: bold; color: #3a5c4a; }
-    .stat-label { font-size: 0.72rem; color: #888; font-family: sans-serif; margin-top: 2px; }
 
     /* カード */
     .card {
@@ -192,6 +184,8 @@
       border-radius: 8px;
     }
     .inline-edit-form.open { display: block; }
+    .yotei-badge { display:inline-block; background:#e67e22; color:#fff; font-size:0.72rem; font-weight:bold; padding:2px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+    .seq-num { font-size:0.75rem; color:#888; font-family:sans-serif; margin-bottom:4px; }
 
     /* セクション見出し */
     .section-title {
@@ -242,15 +236,11 @@
 
     <!-- 📋 記録パネル -->
     <div class="panel active" id="panel-kiroku">
-      <div class="stat-row">
-        <div class="stat-card"><div class="stat-num" id="stat-count">0</div><div class="stat-label">活動回数</div></div>
-        <div class="stat-card"><div class="stat-num" id="stat-places">0</div><div class="stat-label">訪問先</div></div>
-      </div>
-
       <button class="add-btn" id="add-activity-btn">＋ 活動を追加</button>
 
       <div class="form-box" id="activity-form">
         <div class="fg"><label>活動日</label><input type="date" id="act-date"></div>
+        <div class="fg"><label>種類</label><div class="member-checks"><button type="button" class="member-check-btn" id="act-yotei" onclick="this.classList.toggle('selected')">📅 予定</button></div></div>
         <div class="fg"><label>活動名・場所</label><input type="text" id="act-name" placeholder="例：川越散策"></div>
         <div class="fg">
           <label>活動種別</label>
@@ -399,14 +389,14 @@ const KINDS = ["囲碁", "麻雀"];
 const KIND_LABELS = { "囲碁": "⚫⚪囲碁", "麻雀": "🀄麻雀" };
 
 function renderKiroku() {
-  const list   = Object.values(activities);
-  const places = new Set(list.map(a => a.name)).size;
-  document.getElementById("stat-count").textContent  = list.length;
-  document.getElementById("stat-places").textContent = places;
+  const sorted = Object.entries(activities).sort((a, b) => (b[1].date || "").localeCompare(a[1].date || ""));
+  // 予定を除いた実績だけで回数を付番（日付昇順で古い順にN回目）
+  const actualByDate = sorted.filter(([,a]) => !a.yotei).reverse();
+  const seqMap = {};
+  actualByDate.forEach(([id,], i) => seqMap[id] = i + 1);
+  const total = actualByDate.length;
 
-  const sorted = list.slice().sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  document.getElementById("kiroku-list").innerHTML = sorted.map(act => {
-    const id    = Object.keys(activities).find(k => activities[k] === act) || "";
+  document.getElementById("kiroku-list").innerHTML = sorted.map(([id, act]) => {
     const mems  = act.members ? act.members.join("・") : "";
     const count = act.members ? act.members.length : 0;
     const note  = act.note ? `<div style="font-size:0.78rem;color:#888;margin-top:4px">${act.note}</div>` : "";
@@ -421,18 +411,25 @@ function renderKiroku() {
     const kindBtns = KINDS.map(k =>
       `<button type="button" class="member-check-btn ${actKinds.includes(k) ? "selected" : ""}" data-kind="${k}" onclick="this.classList.toggle('selected')">${KIND_LABELS[k]}</button>`
     ).join("");
+    const yoteiBadge = act.yotei ? `<span class="yotei-badge">📅 予定</span>` : "";
+    const seqDisp = act.yotei
+      ? `<div class="seq-num">―<span>${yoteiBadge}</span></div>`
+      : `<div class="seq-num">${seqMap[id]}回目</div>`;
+    const yoteiBtnSel = act.yotei ? "selected" : "";
     return `
       <div class="card">
         <div class="card-btn-row">
           <button type="button" class="edit-btn-sm" onclick="toggleActEdit('${id}')">修正</button>
           <button type="button" class="del-btn-sm" onclick="deleteActivity('${id}')">削除</button>
         </div>
+        ${seqDisp}
         ${kindDisp}
         <div class="card-title">${act.date || ""} ${act.name || ""}</div>
         <div class="card-sub">参加 ${count}名${mems ? "：" + mems : ""}</div>
         ${note}
         <div class="inline-edit-form" id="act-edit-${id}">
           <div class="fg"><label>活動日</label><input type="date" id="ae-date-${id}" value="${dateVal}"></div>
+          <div class="fg"><label>種類</label><div class="member-checks"><button type="button" class="member-check-btn ${yoteiBtnSel}" id="ae-yotei-${id}" onclick="this.classList.toggle('selected')">📅 予定</button></div></div>
           <div class="fg"><label>活動名・場所</label><input type="text" id="ae-name-${id}" value="${(act.name||"").replace(/"/g,'&quot;')}"></div>
           <div class="fg"><label>活動種別</label><div class="member-checks" id="ae-kinds-${id}">${kindBtns}</div></div>
           <div class="fg"><label>参加メンバー</label><div class="member-checks" id="ae-members-${id}">${memberBtns}</div></div>
@@ -458,11 +455,13 @@ function submitActEdit(id) {
   const mems     = [...selMems].map(b => b.dataset.name);
   const selKinds = document.querySelectorAll(`#ae-kinds-${id} .member-check-btn.selected`);
   const kinds    = [...selKinds].map(b => b.dataset.kind);
+  const yotei    = document.getElementById(`ae-yotei-${id}`).classList.contains("selected");
   if (activitiesRef) activitiesRef.child(id).update({
     date: dateRaw.replace(/-/g, "/"),
     name,
     members: mems,
     kinds: kinds.length ? kinds : null,
+    yotei: yotei || null,
     note: note || null,
   });
   showToast("更新しました");
@@ -589,6 +588,7 @@ document.getElementById("add-activity-btn").addEventListener("click", () => {
 document.getElementById("act-cancel").addEventListener("click", () => {
   actFormOpen = false;
   document.getElementById("activity-form").className = "form-box";
+  const _yb = document.getElementById("act-yotei"); if (_yb) _yb.classList.remove("selected");
 });
 
 document.getElementById("act-submit").addEventListener("click", () => {
@@ -596,11 +596,13 @@ document.getElementById("act-submit").addEventListener("click", () => {
   const name = document.getElementById("act-name").value.trim();
   const note = document.getElementById("act-note").value.trim();
   if (!date || !name) { alert("活動日と活動名を入力してください"); return; }
+  const yotei = document.getElementById("act-yotei").classList.contains("selected");
   if (activitiesRef) activitiesRef.push({
     date: date.replace(/-/g, "/"),
     name,
     members: [...selectedActMembers],
     kinds: selectedActKinds.size ? [...selectedActKinds] : null,
+    yotei: yotei || null,
     note: note || null,
   });
   actFormOpen = false;
