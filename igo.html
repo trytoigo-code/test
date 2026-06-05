@@ -631,6 +631,30 @@ document.getElementById("winner-teai").addEventListener("change", function() {
 document.getElementById("result-type").addEventListener("change", function() {
   const t = this.value;
   document.getElementById("moku-fg").style.display = t === "moku" ? "" : "none";
+  // 持碁選択時は手合い選択肢を黒番（下手）のみに絞る
+  const teaiSel = document.getElementById("winner-teai");
+  const allOptions = [
+    { value: "",     label: "指定なし" },
+    { value: "互先", label: "互先（白黒不明）" },
+    { value: "互白", label: "互白（コミあり・白番）" },
+    { value: "互黒", label: "互黒（コミあり・黒番）" },
+    { value: "向先", label: "向先（コミなし・白番）" },
+    { value: "先",   label: "先（コミなし・黒番）" },
+    { value: "向2",  label: "向2（向2子・上手）" },
+    { value: "2子",  label: "2子（下手）" },
+    { value: "向3",  label: "向3（向3子・上手）" },
+    { value: "3子",  label: "3子（下手）" },
+  ];
+  const jigoOptions = [
+    { value: "",     label: "指定なし" },
+    { value: "先",   label: "先（コミなし・黒番）" },
+    { value: "2子",  label: "2子（下手）" },
+    { value: "3子",  label: "3子（下手）" },
+  ];
+  const opts = t === "jigo" ? jigoOptions : allOptions;
+  const current = teaiSel.value;
+  teaiSel.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join("");
+  teaiSel.value = opts.find(o => o.value === current) ? current : "";
   autoFillTeai();
 });
 
