@@ -9,6 +9,11 @@
   ポイントとチップを合算した総合順位を軸に、シーズン単位で成績を管理する。
   現時点では4名での利用を想定している。
 
+【セキュリティ】
+  - 合言葉認証あり（初回のみ入力）
+  - 認証情報はブラウザのlocalStorageに保存される
+  - 別端末・別ブラウザ・キャッシュ削除後は再入力が必要
+
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
   - GitHub Pages でホスティング（単一 index.html で完結）
@@ -46,9 +51,9 @@
   - 管理者メニュー（設定タブ内・折りたたみ式）
       雀士設定・チップレート設定・シーズン管理を収録
   - Firebase によるリアルタイム同期
+  - データエクスポート（設定タブからJSONファイルとしてダウンロード。日付入りファイル名で保存）
 
 【今後の改良候補】
-  - データのエクスポート（CSV等）
   - ダークモード対応
 ================================================================================
 -->
@@ -176,8 +181,8 @@
       display: flex; align-items: center; gap: 4px; position: relative;
     }
     .hist-meta-box {
-      width: 48px; display: flex; flex-direction: column; justify-content: center;
-      align-items: center; flex-shrink: 0; border-right: 1px dashed #ece8dc; padding-right: 2px;
+      min-width: 68px; display: flex; flex-direction: column; justify-content: center;
+      align-items: center; flex-shrink: 0; border-right: 1px dashed #ece8dc; padding-right: 6px;
     }
     .hist-date-label { font-size: 0.7rem; color: #888; font-weight: bold; }
     .hist-no-label { font-size: 0.65rem; color: #b89752; font-weight: bold; margin-top: 2px; }
@@ -206,12 +211,17 @@
     .hist-chip-cell { font-size: 0.68rem; font-weight: bold; margin-top: 1px; color: #666; }
 
     .del-btn {
-      position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-      background: #fcebe9; color: #e74c3c; border: 1px solid #f5c6cb;
-      width: 22px; height: 22px; border-radius: 4px; font-size: 0.65rem;
-      cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold;
+      background: #e74c3c; color: #fff; border: none;
+      padding: 5px 10px; border-radius: 4px; font-size: 0.78rem;
+      cursor: pointer; flex-shrink: 0;
     }
-    .del-btn:active { background: #f8d7da; }
+    .del-btn:active { opacity: 0.8; }
+    .edit-btn {
+      background: #b89752; color: #fff; border: none;
+      padding: 5px 10px; border-radius: 4px; font-size: 0.78rem;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .edit-btn:active { opacity: 0.8; }
 
     /* ── Filter / sort buttons ── */
     .filter-btn {
@@ -244,6 +254,21 @@
   </style>
 </head>
 <body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
 <div id="app">
 
   <div id="header">
@@ -334,12 +359,29 @@
         <p class="note">テスト中など、すべてをやり直したいときに使います。履歴・アーカイブ・シーズン番号をすべて消去してシーズン1に戻します。</p>
         <button class="btn" id="full-reset" style="background:#888">シーズン1からやり直す</button>
 
+        <h3 style="margin-top:24px">データエクスポート</h3>
+        <p class="note">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
+        <button class="btn" id="export-btn" style="background:#2c3e50">JSONでダウンロード</button>
+
       </div>
     </div>
 
   </div></div><div id="toast" style="display:none">
   <span id="toast-msg"></span>
   <button id="toast-undo" style="display:none">元に戻す</button>
+</div>
+
+<!-- 修正モーダル -->
+<div id="edit-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto">
+  <div style="background:#fff;margin:40px auto;max-width:420px;border-radius:10px;padding:20px;box-sizing:border-box">
+    <h3 style="border-left:4px solid #b89752;padding-left:8px;color:#2c3e50;margin-top:0;font-size:1rem">対局記録の修正</h3>
+    <div class="fg"><label>対局日</label><input type="text" id="em-date" placeholder="例: 5/29"></div>
+    <div id="em-players-wrap"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="em-save" style="flex:1;background:#b89752;color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.9rem;cursor:pointer">保存する</button>
+      <button id="em-cancel" style="flex:1;background:#999;color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.9rem;cursor:pointer">キャンセル</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -582,10 +624,10 @@ document.getElementById("add-match").addEventListener("click", () => {
   const dateVal = document.getElementById("match-date").value;
   let d;
   if (dateVal) {
-    const [, mo, dy] = dateVal.split("-");
-    d = `${parseInt(mo)}/${parseInt(dy)}`;
+    const [yr, mo, dy] = dateVal.split("-");
+    d = `${yr}/${parseInt(mo)}/${parseInt(dy)}`;
   } else {
-    const now = new Date(); d = `${now.getMonth()+1}/${now.getDate()}`;
+    const now = new Date(); d = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
   }
 
   state.history.push({ date: d, ranks, points, chips, players: [...state.players] });
@@ -856,7 +898,8 @@ function renderHistory() {
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button class="comment-btn" data-id="${id}" style="background:#f0ede4;color:#888;border:1px solid #ddd;padding:5px 8px;border-radius:4px;font-size:0.78rem;cursor:pointer">💬</button>
-            <button class="del-btn" onclick="deleteMatch(${origIdx})">×</button>
+            <button class="edit-btn" data-id="${id}" data-origidx="${origIdx}">修正</button>
+            <button class="del-btn" data-origidx="${origIdx}">削除</button>
           </div>
         </div>
         <div class="hist-grid">
@@ -881,7 +924,10 @@ function renderHistory() {
             <span style="font-size:0.7rem;color:#bbb">反応：</span>${emojiButtons}
           </div>
           <div class="reaction-picker" data-id="${id}" style="display:none;margin-top:6px;padding:8px;background:#faf8f0;border:1px solid #e0dbcd;border-radius:8px">
-            <div style="font-size:0.78rem;color:#555;margin-bottom:6px"><span class="reaction-pending-emoji" style="font-size:1rem"></span> で反応する名前を選んでください</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <div style="font-size:0.78rem;color:#555"><span class="reaction-pending-emoji" style="font-size:1rem"></span> で反応する名前を選んでください</div>
+              <button class="reaction-cancel-btn" data-id="${id}" style="background:none;border:none;color:#aaa;font-size:0.8rem;cursor:pointer;padding:0 4px">✕</button>
+            </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">${nameBtns}</div>
           </div>` : ""}
         <div class="comment-form" data-id="${id}" style="display:none;margin-top:8px">
@@ -979,6 +1025,28 @@ function renderHistory() {
       }
       m.comment.reactions = reactions;
       pushState();
+    });
+  });
+
+  // ---------- 削除ボタン ----------
+  list.querySelectorAll(".del-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      deleteMatch(Number(btn.dataset.origidx));
+    });
+  });
+
+  // ---------- 修正ボタン ----------
+  list.querySelectorAll(".edit-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      openEditModal(Number(btn.dataset.origidx));
+    });
+  });
+
+  // ---------- 反応ピッカー キャンセル ----------
+  list.querySelectorAll(".reaction-cancel-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const picker = list.querySelector(`.reaction-picker[data-id="${btn.dataset.id}"]`);
+      if (picker) picker.style.display = "none";
     });
   });
 }
@@ -1102,6 +1170,25 @@ document.getElementById("full-reset").addEventListener("click", () => {
   renderSeasonInfo();
 });
 
+// ---------- データエクスポート ----------
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (!isConfigured) { showToast("データベースに接続されていません"); return; }
+  firebase.database().ref("mahjong").once("value", snap => {
+    const data = snap.val();
+    if (!data) { showToast("エクスポートするデータがありません"); return; }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `tenbo_backup_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("エクスポートしました");
+  });
+});
+
 // ---------- シーズン情報表示 ----------
 function renderSeasonInfo() {
   document.getElementById("season-info").textContent =
@@ -1123,6 +1210,66 @@ function renderAll() {
 fillSettingsInputs();
 buildRankInputs();
 renderAll();
+
+// ---------- 修正モーダル ----------
+let editTargetIdx = -1;
+
+function openEditModal(idx) {
+  const m = state.history[idx];
+  if (!m) return;
+  editTargetIdx = idx;
+
+  document.getElementById("em-date").value = m.date || "";
+
+  const wrap = document.getElementById("em-players-wrap");
+  wrap.innerHTML = (m.players || state.players).map((name, pi) => `
+    <div style="margin-top:10px;border:1px solid #e0dbcd;border-radius:8px;padding:10px">
+      <div style="font-size:0.8rem;color:#888;margin-bottom:6px">${name}</div>
+      <div style="display:flex;gap:8px">
+        <div class="fg" style="flex:1;margin:0"><label>点数</label><input type="number" id="em-pt-${pi}" value="${m.points[pi]}"></div>
+        <div class="fg" style="flex:1;margin:0"><label>チップ</label><input type="number" id="em-chip-${pi}" value="${m.chips[pi]}"></div>
+      </div>
+    </div>
+  `).join("");
+
+  document.getElementById("edit-modal").style.display = "block";
+}
+
+document.getElementById("em-save").addEventListener("click", () => {
+  if (editTargetIdx < 0) return;
+  const m = state.history[editTargetIdx];
+  const dateVal = document.getElementById("em-date").value.trim();
+  if (dateVal) m.date = dateVal;
+
+  const players = m.players || state.players;
+  players.forEach((_, pi) => {
+    const pt   = parseInt(document.getElementById(`em-pt-${pi}`).value);
+    const chip = parseInt(document.getElementById(`em-chip-${pi}`).value);
+    if (!isNaN(pt))   m.points[pi] = pt;
+    if (!isNaN(chip)) m.chips[pi]  = chip;
+  });
+
+  // 点数から順位を再計算
+  const sorted = [...m.points].map((p, i) => ({ i, p })).sort((a, b) => b.p - a.p);
+  sorted.forEach((s, rank) => { m.ranks[s.i] = rank + 1; });
+
+  pushState();
+  document.getElementById("edit-modal").style.display = "none";
+  editTargetIdx = -1;
+  showToast("修正しました");
+});
+
+document.getElementById("em-cancel").addEventListener("click", () => {
+  document.getElementById("edit-modal").style.display = "none";
+  editTargetIdx = -1;
+});
+
+document.getElementById("edit-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("edit-modal")) {
+    document.getElementById("edit-modal").style.display = "none";
+    editTargetIdx = -1;
+  }
+});
 </script>
 </body>
 </html>
