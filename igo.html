@@ -200,7 +200,7 @@
     #toast {
       position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
       background: #2c3e50; color: #fff; padding: 10px 18px;
-      border-radius: 20px; font-size: 0.88rem; z-index: 999;
+      border-radius: 20px; font-size: 0.88rem; z-index: 1100;
       display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
       display: none; align-items: center; gap: 12px; white-space: nowrap;
     }
@@ -656,6 +656,7 @@ document.getElementById("add-match").addEventListener("click", () => {
     if (i1 === i2) { showToast("同じ人は選べません"); return; }
     const ta1 = document.getElementById("winner-teai").value;
     if (!ta1) { showToast("手合いを選択してください"); return; }
+    if (!BLACK_TEAI.includes(ta1)) { showToast("持碁は手合い「先・2子・3子」のみ登録できます"); return; }
     const ta2 = TEAI_PAIR[ta1] || "";
     m = { id:crypto.randomUUID(), type:"jigo", p1:state.players[i1], p2:state.players[i2],
           teai1:ta1, teai2:ta2, date:d };
@@ -973,7 +974,7 @@ function renderHistoryFilter() {
 // 黒番（下手）に該当する手合い。
 // 互黒=互先の黒番、先=向先局の黒番（下手）。
 // 持碁はこの手合いを持つ側の勝ちとして扱う。
-const BLACK_TEAI = ["互黒", "先"];
+const BLACK_TEAI = ["先", "2子", "3子"];
 
 function jigoWinner(m) {
   // 持碁は黒番（下手）の勝ちとして勝者を返す。手合い未設定ならnull
@@ -1814,6 +1815,7 @@ document.getElementById("edit-save").addEventListener("click", () => {
 
   const tw = document.getElementById("edit-teai").value;
   if (!tw) { showToast("手合いを選択してください"); return; }
+  if (type === "jigo" && !BLACK_TEAI.includes(tw)) { showToast("持碁は手合い「先・2子・3子」のみ登録できます"); return; }
   const tl = TEAI_PAIR[tw] || "";
   const orig = state.history[editTargetIdx];
 
