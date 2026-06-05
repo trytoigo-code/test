@@ -5,14 +5,17 @@
 ================================================================================
 
 【アプリの目的】
-  山あるきメンバーの活動記録を共有するアプリ。
-  どこに行ったか、誰が参加したか、次はどこに行きたいかを仲間と共有する。
+  仲間との活動記録を共有するアプリ。
+  どこに行ったか、誰が参加したか、次はどこに行きたいかをグループで共有する。
+  複数のグループ（山あるき・遠足クラブ・ぶんかのかい等）で共用し、
+  URLの ?group= パラメータでデータを切り替える。
 
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
   - GitHub Pages でホスティング（単一 ashiato.html で完結）
   - Firebase Realtime Database によるリアルタイム同期
-  - index.html（山あるき）からリンク
+  - 各グループの index.html から ?title=〇〇&group=〇〇 付きでリンク
+  - 単独起動時は ?group= なしで起動（testデータを参照）
 
 【技術構成】
   - バニラJS（React・Babel 不使用）
@@ -34,9 +37,15 @@
   ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
 
 【主な機能（現時点）】
-  - 📋記録タブ：活動記録の一覧・統計（活動回数・訪問先数）・追加・編集・削除（活動種別：囲碁／麻雀 複数選択可）
+  - 📋記録タブ：活動記録の一覧・追加・編集・削除（活動種別：囲碁／麻雀 複数選択可、予定フラグ付き）
   - 🌟希望タブ：行き先希望の一覧・追加（メモ任意）・編集・投票（名前選択式トグル）・削除
   - ⚙️設定タブ：管理者の仕事（メンバー管理）
+  - データエクスポート（設定タブからJSONファイルとしてダウンロード。日付入りファイル名で保存）
+
+【セキュリティ】
+  - 合言葉認証あり（初回のみ入力）
+  - 認証情報はブラウザのlocalStorageに保存される
+  - 別端末・別ブラウザ・キャッシュ削除後は再入力が必要
 
 【今後の改良候補】
   - 活動の写真添付
@@ -117,8 +126,8 @@
     .fg label { font-size: 0.8rem; color: #666; font-family: sans-serif; display: block; margin-bottom: 4px; }
     .fg input, .fg textarea, .fg select {
       width: 100%; border: 1px solid #ddd; border-radius: 6px;
-      padding: 8px 10px; font-size: 0.88rem; font-family: inherit;
-      background: #fff; color: #333;
+      padding: 12px 12px; font-size: 0.95rem; font-family: inherit;
+      background: #fff; color: #333; box-sizing: border-box;
     }
     .fg textarea { resize: vertical; }
     .member-checks { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -218,6 +227,21 @@
   </style>
 </head>
 <body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
 <div id="app">
 
   <div id="header">
@@ -241,7 +265,7 @@
       <div class="form-box" id="activity-form">
         <div class="fg"><label>活動日</label><input type="date" id="act-date"></div>
         <div class="fg"><label>種類</label><div class="member-checks"><button type="button" class="member-check-btn" id="act-yotei" onclick="this.classList.toggle('selected')">📅 予定</button></div></div>
-        <div class="fg"><label>活動名・場所</label><input type="text" id="act-name" placeholder="例：川越散策"></div>
+        <div class="fg"><label>活動名・場所</label><textarea id="act-name" rows="2" placeholder="例：川越散策"></textarea></div>
         <div class="fg">
           <label>活動種別</label>
           <div class="member-checks" id="act-kinds">
@@ -266,7 +290,7 @@
       <button class="add-btn" id="add-kibou-btn">＋ 行き先を追加</button>
 
       <div class="form-box" id="kibou-form">
-        <div class="fg"><label>行き先・やりたいこと</label><input type="text" id="kib-place" placeholder="例：鎌倉"></div>
+        <div class="fg"><label>行き先・やりたいこと</label><textarea id="kib-place" rows="2" placeholder="例：鎌倉"></textarea></div>
         <div class="fg">
           <label>提案者</label>
           <select id="kib-proposer">
@@ -295,6 +319,10 @@
           <input type="text" id="new-member-input" placeholder="名前を入力" style="flex:1;border:1px solid #ddd;border-radius:6px;padding:8px 10px;font-size:0.88rem;font-family:inherit">
           <button id="add-member-btn" style="background:#3a5c4a;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-size:0.88rem;font-family:inherit;cursor:pointer">追加</button>
         </div>
+
+        <div class="section-title" style="margin-top:24px">データエクスポート</div>
+        <p style="font-size:0.84rem;color:#666;margin:0 0 10px;line-height:1.6">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
+        <button id="export-btn" style="width:100%;background:#2c3e50;color:#fff;border:none;border-radius:8px;padding:12px;font-size:0.95rem;font-family:inherit;cursor:pointer">JSONでダウンロード</button>
       </div>
     </div>
 
@@ -328,13 +356,15 @@ let activitiesRef = null;
 let wishesRef     = null;
 let configRef     = null;
 
+const group = new URLSearchParams(location.search).get("group") || "test";
+
 const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
 if (isConfigured) {
   try {
     firebase.initializeApp(firebaseConfig);
-    activitiesRef = firebase.database().ref("ashiato/activities");
-    wishesRef     = firebase.database().ref("ashiato/wishes");
-    configRef     = firebase.database().ref("ashiato/config");
+    activitiesRef = firebase.database().ref(`ashiato/${group}/activities`);
+    wishesRef     = firebase.database().ref(`ashiato/${group}/wishes`);
+    configRef     = firebase.database().ref(`ashiato/${group}/config`);
 
     activitiesRef.on("value", snap => {
       activities = snap.val() || {};
@@ -446,7 +476,7 @@ function renderKiroku() {
         <div class="inline-edit-form" id="act-edit-${id}">
           <div class="fg"><label>活動日</label><input type="date" id="ae-date-${id}" value="${dateVal}"></div>
           <div class="fg"><label>種類</label><div class="member-checks"><button type="button" class="member-check-btn ${yoteiBtnSel}" id="ae-yotei-${id}" onclick="this.classList.toggle('selected')">📅 予定</button></div></div>
-          <div class="fg"><label>活動名・場所</label><input type="text" id="ae-name-${id}" value="${(act.name||"").replace(/"/g,'&quot;')}"></div>
+          <div class="fg"><label>活動名・場所</label><textarea id="ae-name-${id}" rows="2">${(act.name||"").replace(/</g,'&lt;')}</textarea></div>
           <div class="fg"><label>活動種別</label><div class="member-checks" id="ae-kinds-${id}">${kindBtns}</div></div>
           <div class="fg"><label>参加メンバー</label><div class="member-checks" id="ae-members-${id}">${memberBtns}</div></div>
           <div class="fg"><label>メモ（任意）</label><textarea id="ae-note-${id}" rows="2">${act.note||""}</textarea></div>
@@ -525,7 +555,7 @@ function renderKibou() {
               <div class="vote-name-btns">${memberNames}</div>
             </div>
             <div class="inline-edit-form" id="kib-edit-${id}">
-              <div class="fg"><label>行き先・やりたいこと</label><input type="text" id="ke-place-${id}" value="${(w.place||"").replace(/"/g,'&quot;')}"></div>
+              <div class="fg"><label>行き先・やりたいこと</label><textarea id="ke-place-${id}" rows="2">${(w.place||"").replace(/</g,'&lt;')}</textarea></div>
               <div class="fg"><label>提案者</label>
                 <select id="ke-proposer-${id}">
                   <option value="">（選択してください）</option>
@@ -540,19 +570,21 @@ function renderKibou() {
       }).join("")
     : `<p style="color:#999;font-size:0.88rem">まだ希望地がありません。</p>`;
 
+  const kibouList = document.getElementById("kibou-list");
+
   // 行きたいボタン
-  document.querySelectorAll(".vote-btn").forEach(btn => {
+  kibouList.querySelectorAll(".vote-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
       const picker = document.getElementById(`picker-${id}`);
-      const isOpen = picker.style.display !== "none";
-      document.querySelectorAll(".vote-picker").forEach(p => p.style.display = "none");
-      picker.style.display = isOpen ? "none" : "";
+      const isOpen = getComputedStyle(picker).display !== "none";
+      kibouList.querySelectorAll(".vote-picker").forEach(p => p.style.display = "none");
+      picker.style.display = isOpen ? "none" : "block";
     });
   });
 
   // 名前ボタン → 投票トグル
-  document.querySelectorAll(".vote-name-btn").forEach(btn => {
+  kibouList.querySelectorAll(".vote-name-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const id   = btn.dataset.id;
       const name = btn.dataset.name;
@@ -685,6 +717,25 @@ function buildProposerSelect() {
   sel.innerHTML = `<option value="">（選択してください）</option>`
     + members.map(m => `<option value="${m}">${m}</option>`).join("");
 }
+
+// ---------- データエクスポート ----------
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (!isConfigured) { showToast("データベースに接続されていません"); return; }
+  firebase.database().ref(`ashiato/${group}`).once("value", snap => {
+    const data = snap.val();
+    if (!data) { showToast("エクスポートするデータがありません"); return; }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `ashiato_${group}_backup_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("エクスポートしました");
+  });
+});
 
 // ---------- 設定タブ（メンバー管理） ----------
 document.getElementById("admin-toggle").addEventListener("click", () => {
