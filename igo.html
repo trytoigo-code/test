@@ -9,6 +9,11 @@
   対局結果・星取表・手合い割を全員がリアルタイムで確認できることを重視する。
   現時点では6名での利用を想定しているが、今後の拡張余地を残した設計とする。
 
+【セキュリティ】
+  - 合言葉認証あり（初回のみ入力）
+  - 認証情報はブラウザのlocalStorageに保存される
+  - 別端末・別ブラウザ・キャッシュ削除後は再入力が必要
+
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
   - GitHub Pages でホスティング（現時点では単一 index.html で完結）
@@ -34,7 +39,7 @@
 
 【主な機能（現時点）】
   - 対局者設定（現時点では6名、拡張余地あり）
-  - 結果入力（中押し・時間切れ・目数差・持碁・不明）
+  - 結果入力（中押し・時間切れ・目数差・持碁）
   - 星取表・順位表示（ヒートマップ付き・勝数順/勝率順の切り替え対応）
   - 対局履歴（多視点表示・修正機能付き）
       全体：全対局の記録
@@ -51,11 +56,11 @@
   - 対局コメント（履歴から各対局に一言メモを後から追記可能。短文はそのまま表示、長文は折りたたみ）
   - コメントへのリアクション（👍😄😮🔥の4種。誰が押したかFirebaseで全員に同期）
   - Firebase によるリアルタイム同期
+  - データエクスポート（設定タブからJSONファイルとしてダウンロード。日付入りファイル名で保存）
 
 【今後の改良候補】
   - 結果入力画面のカード型UI
   - ダークモード対応
-  - データのバックアップ・エクスポート
   - 囲碁語録アプリとの連携
 ================================================================================
 -->
@@ -207,6 +212,21 @@
   </style>
 </head>
 <body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
 <div id="app">
 
   <!-- Header -->
@@ -258,7 +278,7 @@
         <p class="note">ペアごとの手合いを手動で設定します。使い始めや手合いを直接変更したい時にお使いください。</p>
         <div id="level-settings"></div>
         <button class="btn" id="save-levels" style="background:#b89752">手合いを保存して同期</button>
-        <p class="note" style="margin-top:8px">※ 対局記録を修正しても手合いレベルは自動で再計算されません。必要な場合はここで手動調整してください。</p>
+        <p class="note" style="margin-top:8px">※ 対局記録を修正・削除すると手合いレベルと連勝数は自動で再計算されます。手動で直接変更したい場合はここを使ってください。</p>
 
         <h3 style="margin-top:24px">シーズン管理</h3>
         <p class="note">対局履歴と連勝カウントをリセットします。手合いレベルは引き継ぎます。</p>
@@ -269,6 +289,10 @@
         <h3 style="margin-top:24px">完全リセット</h3>
         <p class="note">テスト中など、すべてをやり直したいときに使います。履歴・アーカイブ・シーズン番号をすべて消去してシーズン1に戻します。手合いレベルは保持されます。</p>
         <button class="btn" id="full-reset" style="background:#888">シーズン1からやり直す</button>
+
+        <h3 style="margin-top:24px">データエクスポート</h3>
+        <p class="note">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
+        <button class="btn" id="export-btn" style="background:#2c3e50">JSONでダウンロード</button>
       </div>
     </div>
 
@@ -288,7 +312,6 @@
           <option value="jikan">時間切れ</option>
           <option value="moku">目数差</option>
           <option value="jigo">持碁（黒勝ち）</option>
-          <option value="fumei">不明</option>
         </select>
       </div>
       <div class="fg"><label id="label-left">勝者 👑</label><select id="winner"></select></div>
@@ -366,7 +389,6 @@
         <option value="jikan">時間切れ</option>
         <option value="moku">目数差</option>
         <option value="jigo">持碁（黒勝ち）</option>
-        <option value="fumei">不明</option>
       </select>
     </div>
     <div class="fg"><label id="edit-label-left">勝者 👑</label><select id="edit-winner"></select></div>
@@ -608,13 +630,7 @@ document.getElementById("winner-teai").addEventListener("change", function() {
 
 document.getElementById("result-type").addEventListener("change", function() {
   const t = this.value;
-  const isJigo = t === "jigo";
   document.getElementById("moku-fg").style.display = t === "moku" ? "" : "none";
-  // ラベルを結果種別に応じて切替
-  document.getElementById("label-left").textContent      = isJigo ? "対局者A" : "勝者 👑";
-  document.getElementById("label-right").textContent     = isJigo ? "対局者B" : "敗者";
-  document.getElementById("label-left-teai").textContent = isJigo ? "対局者Aの手合い" : "勝者の手合い";
-  document.getElementById("label-right-teai").textContent= isJigo ? "対局者B" : "敗者";
   autoFillTeai();
 });
 
@@ -625,10 +641,10 @@ document.getElementById("add-match").addEventListener("click", () => {
   let d;
   if (dateVal) {
     const [y, mo, dy] = dateVal.split("-");
-    d = `${parseInt(mo)}/${parseInt(dy)}`;
+    d = `${y}/${parseInt(mo)}/${parseInt(dy)}`;
   } else {
     const now = new Date();
-    d = `${now.getMonth()+1}/${now.getDate()}`;
+    d = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
   }
   let m;
 
@@ -639,6 +655,7 @@ document.getElementById("add-match").addEventListener("click", () => {
     const i1 = +v1, i2 = +v2;
     if (i1 === i2) { showToast("同じ人は選べません"); return; }
     const ta1 = document.getElementById("winner-teai").value;
+    if (!ta1) { showToast("手合いを選択してください"); return; }
     const ta2 = TEAI_PAIR[ta1] || "";
     m = { id:crypto.randomUUID(), type:"jigo", p1:state.players[i1], p2:state.players[i2],
           teai1:ta1, teai2:ta2, date:d };
@@ -650,6 +667,7 @@ document.getElementById("add-match").addEventListener("click", () => {
     const wi = +wv, li = +lv;
     if (wi === li) { showToast("同じ人は選べません"); return; }
     const tw = document.getElementById("winner-teai").value;
+    if (!tw) { showToast("手合いを選択してください"); return; }
     const tl = TEAI_PAIR[tw] || "";
     if (type === "moku") {
       const mk = parseFloat(document.getElementById("mokusuu").value);
@@ -727,10 +745,6 @@ function calcStats() {
         const loser = jw === m.p1 ? m.p2 : m.p1;
         if (s[jw])    { s[jw].wins++;    s[jw].total++;    }
         if (s[loser]) { s[loser].losses++; s[loser].total++; }
-      } else {
-        // 手合い未設定の持碁は引き分けカウント
-        if (s[m.p1]) { s[m.p1].jigo++; s[m.p1].total++; }
-        if (s[m.p2]) { s[m.p2].jigo++; s[m.p2].total++; }
       }
     } else {
       if (s[m.winner]) { s[m.winner].wins++; s[m.winner].total++; }
@@ -1621,6 +1635,25 @@ document.getElementById("full-reset").addEventListener("click", () => {
   renderSeasonInfo();
 });
 
+// ---------- データエクスポート ----------
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (!isConfigured) { showToast("データベースに接続されていません"); return; }
+  firebase.database().ref("go-league").once("value", snap => {
+    const data = snap.val();
+    if (!data) { showToast("エクスポートするデータがありません"); return; }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `hoshitori_backup_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("エクスポートしました");
+  });
+});
+
 // ---------- シーズン情報表示 ----------
 function renderSeasonInfo() {
   const el = document.getElementById("season-info");
@@ -1709,13 +1742,11 @@ function openEditModal(m, idx) {
     document.getElementById("edit-teai-pair-row").style.display = "none";
   }
 
-  // ラベル切替
-  const labelL = isJigo ? "対局者A" : "勝者 👑";
-  const labelR = isJigo ? "対局者B" : "敗者";
-  document.getElementById("edit-label-left").textContent  = labelL;
-  document.getElementById("edit-label-right").textContent = labelR;
-  document.getElementById("edit-label-teai").textContent  = isJigo ? "対局者Aの手合い" : "勝者の手合い";
-  document.getElementById("edit-label-teai-pair").textContent = isJigo ? "対局者B" : "敗者";
+  // ラベルは常に固定
+  document.getElementById("edit-label-left").textContent  = "勝者 👑";
+  document.getElementById("edit-label-right").textContent = "敗者";
+  document.getElementById("edit-label-teai").textContent  = "勝者の手合い";
+  document.getElementById("edit-label-teai-pair").textContent = "敗者";
 
   document.getElementById("edit-modal").style.display = "";
 
@@ -1733,15 +1764,10 @@ function openEditModal(m, idx) {
   }
 }
 
-// 結果種別変更でラベル・目数差欄を切替
+// 結果種別変更で目数差欄を切替
 document.getElementById("edit-result").addEventListener("change", function() {
   const t = this.value;
-  const isJigo = t === "jigo";
   document.getElementById("edit-moku-fg").style.display = t === "moku" ? "" : "none";
-  document.getElementById("edit-label-left").textContent  = isJigo ? "対局者A" : "勝者 👑";
-  document.getElementById("edit-label-right").textContent = isJigo ? "対局者B" : "敗者";
-  document.getElementById("edit-label-teai").textContent  = isJigo ? "対局者Aの手合い" : "勝者の手合い";
-  document.getElementById("edit-label-teai-pair").textContent = isJigo ? "対局者B" : "敗者";
 });
 
 // 手合い変更で相手手合いを自動表示
@@ -1757,6 +1783,19 @@ document.getElementById("edit-teai").addEventListener("change", function() {
 });
 
 // 保存
+// ---------- 手合い・連勝の全再計算 ----------
+// 履歴を登録順（古い順）に全件なめてlevels/streaksを再構築する。
+// 対局記録を修正した際に呼ぶ。
+function recalcAllLevelsAndStreaks() {
+  // 全ペアをリセット
+  state.levels  = {};
+  state.streaks = {};
+  // historyは新しい順（unshift）で積まれているため逆順で処理
+  [...state.history].reverse().forEach(m => {
+    updateLevelsAndStreaks(m);
+  });
+}
+
 document.getElementById("edit-save").addEventListener("click", () => {
   if (editTargetIdx < 0) return;
   const type = document.getElementById("edit-result").value;
@@ -1764,7 +1803,7 @@ document.getElementById("edit-save").addEventListener("click", () => {
   let d = state.history[editTargetIdx].date;
   if (dateVal) {
     const [y,mo,dy] = dateVal.split("-");
-    d = `${parseInt(mo)}/${parseInt(dy)}`;
+    d = `${y}/${parseInt(mo)}/${parseInt(dy)}`;
   }
 
   const wv = document.getElementById("edit-winner").value;
@@ -1774,6 +1813,7 @@ document.getElementById("edit-save").addEventListener("click", () => {
   if (wv === lv) { showToast("同じ人は選べません"); return; }
 
   const tw = document.getElementById("edit-teai").value;
+  if (!tw) { showToast("手合いを選択してください"); return; }
   const tl = TEAI_PAIR[tw] || "";
   const orig = state.history[editTargetIdx];
 
@@ -1805,6 +1845,7 @@ document.getElementById("edit-save").addEventListener("click", () => {
                   : cText ? { text: cText, author: "", reactions: existReactions }
                   : "";
 
+  recalcAllLevelsAndStreaks();
   pushState();
   document.getElementById("edit-modal").style.display = "none";
   showToast("対局記録を修正しました");
@@ -1856,6 +1897,7 @@ function showDeleteUndo(delIdx) {
   undoTimer = setTimeout(() => {
     el.style.display = "none";
     if (pendingDelete) {
+      recalcAllLevelsAndStreaks();
       pushState(); // ここで初めてFirebaseに書き込む
       pendingDelete = null;
     }
@@ -1869,6 +1911,7 @@ document.getElementById("toast-undo").addEventListener("click", () => {
     state.history.splice(pendingDelete.idx, 0, pendingDelete.record);
     pendingDelete = null;
     if (undoTimer) clearTimeout(undoTimer);
+    recalcAllLevelsAndStreaks();
     renderAll();
     showToast("元に戻しました");
   }
