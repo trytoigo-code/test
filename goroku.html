@@ -17,6 +17,11 @@
   🎯心得（対局前） → 対局 → 📝学び（対局後） → 次の対局
   Aさんの気づき → 感想戦 → Bさんが試す → 新しい気づき → さらに広がる
 
+【セキュリティ】
+  - 合言葉認証あり（初回のみ入力）
+  - 認証情報はブラウザのlocalStorageに保存される
+  - 別端末・別ブラウザ・キャッシュ削除後は再入力が必要
+
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
   - GitHub Pages でホスティング（単一 goroku.html で完結）
@@ -220,6 +225,21 @@
   </style>
 </head>
 <body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
 <div id="app">
 
   <!-- ヘッダー -->
