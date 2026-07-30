@@ -17,10 +17,12 @@
         下位準決勝の勝者2名 → 5位決定戦 → 5位・6位
         下位準決勝の敗者2名 → 7位決定戦 → 7位・8位
 
-  勝敗はモバイル画面での見やすさを優先し、罫線でつないだ図ではなく
-  「ラウンドごとのカードリスト」形式で表示する（対局者名をタップして
-  勝者を選択）。上位ラウンドの結果を変更した場合、その結果に依存する
-  下流の試合結果は自動的にクリアされる。
+  結果の入力は「ラウンドごとのカードリスト」形式（対局者名をタップして
+  勝者を選択）で行い、その内容をもとに紙のトーナメント表のような
+  罫線でつないだブラケット図（本戦・3位決定戦・5位決定戦・7位決定戦）を
+  自動で描画する。決定済みの試合は罫線が色付きになる。
+  上位ラウンドの結果を変更した場合、その結果に依存する下流の試合結果は
+  自動的にクリアされる。
 
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
@@ -51,9 +53,10 @@
 
 【主な機能（現時点）】
   - 大会名・対局者8名の設定
-  - トーナメント表（ラウンドごとのカード表示。対局者名タップで勝者選択）
+  - 結果入力（ラウンドごとのカード表示。対局者名タップで勝者選択）
+  - トーナメント図（罫線でつないだブラケット表示。本戦・3位決定戦・
+    5位決定戦・7位決定戦。決定済みの試合は色付きの罫線で表示）
   - 3位決定戦・5位決定戦・7位決定戦の自動組み合わせ
-  - 最終順位まとめ（優勝〜8位）
   - 結果だけリセット（対局者名は保持）
   - 新しい大会にする（現在の大会をアーカイブして白紙に戻す）
   - 過去の大会アーカイブ表示
@@ -145,6 +148,23 @@
   }
   .standings-num { width: 34px; font-size: 1.05rem; text-align: center; flex-shrink: 0; }
   .standings-name { font-weight: bold; font-size: 0.92rem; }
+
+  /* トーナメント図（罫線でつないだブラケット表示） */
+  .bracket-block { margin-bottom: 22px; }
+  .bracket-block-title { font-size: 0.8rem; font-weight: bold; color: #b89752; margin-bottom: 8px; }
+  .bd-scroll { overflow-x: auto; padding-bottom: 4px; }
+  .bd-wrap { position: relative; }
+  .bd-box {
+    position: absolute; display: flex; align-items: center; justify-content: center;
+    background: #fff; border: 1px solid #ddd8cc; border-radius: 4px;
+    font-size: 0.72rem; font-weight: bold; color: #444; padding: 0 6px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .bd-out { flex-direction: column; line-height: 1.3; border-color: #b89752; background: #fdf8ee; }
+  .bd-out-label { font-size: 0.58rem; color: #b89752; font-weight: bold; letter-spacing: 0.05em; }
+  .bd-decided { background: #2c3e50; border-color: #2c3e50; color: #fff; }
+  .bd-decided .bd-out-label { color: #f0c987; }
+  .bracket-divider { border-top: 1px dashed #ccc; margin: 22px 0; }
 
   .archive-card {
     background: #f1f0ea; border: 1px solid #e0dbcd; border-radius: 6px;
@@ -371,6 +391,76 @@ function setWinner(cat, idx, side) {
   pushState();
 }
 
+// ---------- トーナメント図（ブラケット線） ----------
+// leaves: 末端の対局者名の配列（長さは2のべき乗）
+// decidedLevels: ラウンドごとの決定済みフラグ配列（decidedLevels[r][i]）
+// winnerName/loserName: 最終的な勝者・敗者名（未定ならnull）
+// outputLabels: [勝者側の見出し, 敗者側の見出し]（例：["優勝","準優勝"]）
+function renderBracketDiagram(container, leaves, decidedLevels, winnerName, loserName, outputLabels) {
+  const n = leaves.length;
+  const rounds = Math.log2(n);
+  const rowH = 34, leafW = 108, boxH = 26, stepW = 30, outBoxW = 108, gapOut = boxH + 10;
+
+  // 各段の中心y座標を計算（levels[0]=葉、levels[rounds]=最終合流点）
+  const levels = [Array.from({ length:n }, (_, i) => (i + 0.5) * rowH)];
+  while (levels[levels.length - 1].length > 1) {
+    const prev = levels[levels.length - 1];
+    const next = [];
+    for (let i = 0; i < prev.length; i += 2) next.push((prev[i] + prev[i+1]) / 2);
+    levels.push(next);
+  }
+
+  const finalY = levels[rounds][0];
+  const outTopY = finalY - gapOut / 2, outBotY = finalY + gapOut / 2;
+  const xAfterRounds = leafW + rounds * stepW;
+  const totalW = xAfterRounds + stepW + outBoxW + 4;
+  const totalH = n * rowH;
+
+  let lines = "", boxes = "";
+
+  leaves.forEach((name, i) => {
+    const y = levels[0][i] - boxH / 2;
+    boxes += `<div class="bd-box" style="left:0px; top:${y}px; width:${leafW}px; height:${boxH}px">${name ? escapeHtml(name) : "―"}</div>`;
+  });
+
+  for (let r = 0; r < rounds; r++) {
+    const fromYs = levels[r], toYs = levels[r+1];
+    const xIn = leafW + r * stepW, xMid = xIn + stepW / 2, xOut = leafW + (r+1) * stepW;
+    for (let i = 0; i < toYs.length; i++) {
+      const yTop = fromYs[2*i], yBot = fromYs[2*i+1], yMid = toYs[i];
+      const decided = !!(decidedLevels[r] && decidedLevels[r][i]);
+      const c = decided ? "#b03a2e" : "#d8d2c2", w = decided ? 2.5 : 1.5;
+      lines += `<line x1="${xIn}" y1="${yTop}" x2="${xMid}" y2="${yTop}" stroke="${c}" stroke-width="${w}"/>`;
+      lines += `<line x1="${xIn}" y1="${yBot}" x2="${xMid}" y2="${yBot}" stroke="${c}" stroke-width="${w}"/>`;
+      lines += `<line x1="${xMid}" y1="${yTop}" x2="${xMid}" y2="${yBot}" stroke="${c}" stroke-width="${w}"/>`;
+      lines += `<line x1="${xMid}" y1="${yMid}" x2="${xOut}" y2="${yMid}" stroke="${c}" stroke-width="${w}"/>`;
+    }
+  }
+
+  // 最終合流点 → 勝者・敗者の出力ボックスへの分岐線
+  {
+    const xIn = xAfterRounds, xMid = xIn + stepW / 2, xOut = xIn + stepW;
+    const decided = !!(decidedLevels[rounds-1] && decidedLevels[rounds-1][0]);
+    const c = decided ? "#b03a2e" : "#d8d2c2", w = decided ? 2.5 : 1.5;
+    lines += `<line x1="${xIn}" y1="${finalY}" x2="${xMid}" y2="${finalY}" stroke="${c}" stroke-width="${w}"/>`;
+    lines += `<line x1="${xMid}" y1="${outTopY}" x2="${xMid}" y2="${outBotY}" stroke="${c}" stroke-width="${w}"/>`;
+    lines += `<line x1="${xMid}" y1="${outTopY}" x2="${xOut}" y2="${outTopY}" stroke="${c}" stroke-width="${w}"/>`;
+    lines += `<line x1="${xMid}" y1="${outBotY}" x2="${xOut}" y2="${outBotY}" stroke="${c}" stroke-width="${w}"/>`;
+  }
+
+  boxes += `<div class="bd-box bd-out ${winnerName ? "bd-decided" : ""}" style="left:${xAfterRounds+stepW}px; top:${outTopY-boxH/2}px; width:${outBoxW}px; height:${boxH}px">
+    <span class="bd-out-label">${outputLabels[0]}</span>${winnerName ? escapeHtml(winnerName) : ""}
+  </div>`;
+  boxes += `<div class="bd-box bd-out ${loserName ? "bd-decided" : ""}" style="left:${xAfterRounds+stepW}px; top:${outBotY-boxH/2}px; width:${outBoxW}px; height:${boxH}px">
+    <span class="bd-out-label">${outputLabels[1]}</span>${loserName ? escapeHtml(loserName) : ""}
+  </div>`;
+
+  container.innerHTML = `<div class="bd-scroll"><div class="bd-wrap" style="width:${totalW}px; height:${totalH}px">
+    <svg width="${totalW}" height="${totalH}" style="position:absolute;top:0;left:0">${lines}</svg>
+    ${boxes}
+  </div></div>`;
+}
+
 // ---------- 描画 ----------
 function matchCardHTML(label, cat, idx, players, resultVal) {
   const [a, b] = players;
@@ -396,51 +486,68 @@ function renderBracket() {
   let html = "";
   if (state.title) html += `<h3 style="margin-bottom:16px">${escapeHtml(state.title)}</h3>`;
 
-  html += `<h4 class="section-head">1回戦</h4>`;
+  // ===== トーナメント図 =====
+  html += `<h4 class="section-head">🖼 トーナメント表</h4>`;
+  html += `<div class="bracket-block"><div class="bracket-block-title">本戦</div><div id="bd-main"></div></div>`;
+  html += `<div class="bracket-block"><div class="bracket-block-title">3位決定戦</div><div id="bd-third"></div></div>`;
+  html += `<div class="bracket-divider"></div>`;
+  html += `<div class="bracket-block"><div class="bracket-block-title">5位決定戦</div><div id="bd-fifth"></div></div>`;
+  html += `<div class="bracket-block"><div class="bracket-block-title">7位決定戦</div><div id="bd-seventh"></div></div>`;
+
+  // ===== 結果入力（タップで勝者選択） =====
+  html += `<h4 class="section-head">📝結果を入力</h4>`;
+
+  html += `<div class="match-label" style="margin:0 0 6px">1回戦</div>`;
   for (let i=0;i<4;i++) html += matchCardHTML(`第${i+1}試合`, "qf", i, getQFPlayers(i), state.results.qf[i]);
 
-  html += `<h4 class="section-head">2回戦（準決勝）</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">2回戦（準決勝）</div>`;
   for (let i=0;i<2;i++) html += matchCardHTML(`準決勝${i+1}`, "sf", i, getSFPlayers(i), state.results.sf[i]);
 
-  html += `<h4 class="section-head">決勝</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">決勝</div>`;
   html += matchCardHTML("優勝・準優勝", "final", 0, getFinalPlayers(), state.results.final);
 
-  html += `<h4 class="section-head">3位決定戦</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">3位決定戦</div>`;
   html += matchCardHTML("準決勝の敗者同士", "third", 0, getThirdPlayers(), state.results.third);
 
-  html += `<h4 class="section-head">下位トーナメント（1回戦の敗者）</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">下位トーナメント（1回戦の敗者）</div>`;
   for (let i=0;i<2;i++) html += matchCardHTML(`下位準決勝${i+1}`, "cLower", i, getCLowerPlayers(i), state.results.cLower[i]);
 
-  html += `<h4 class="section-head">5位決定戦</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">5位決定戦</div>`;
   html += matchCardHTML("下位準決勝の勝者同士", "fifth", 0, getFifthPlayers(), state.results.fifth);
 
-  html += `<h4 class="section-head">7位決定戦</h4>`;
+  html += `<div class="match-label" style="margin:14px 0 6px">7位決定戦</div>`;
   html += matchCardHTML("下位準決勝の敗者同士", "seventh", 0, getSeventhPlayers(), state.results.seventh);
-
-  const standings = [
-    { place:1, name: getFinalResult().winner },
-    { place:2, name: getFinalResult().loser },
-    { place:3, name: getThirdResult().winner },
-    { place:4, name: getThirdResult().loser },
-    { place:5, name: getFifthResult().winner },
-    { place:6, name: getFifthResult().loser },
-    { place:7, name: getSeventhResult().winner },
-    { place:8, name: getSeventhResult().loser },
-  ];
-  if (standings.some(s => s.name)) {
-    html += `<h4 class="section-head">🏅最終順位</h4>`;
-    const medals = { 1:"🥇", 2:"🥈", 3:"🥉" };
-    html += standings.map(s => `
-      <div class="standings-row">
-        <div class="standings-num">${medals[s.place] || s.place}</div>
-        <div class="standings-name">${s.name ? escapeHtml(s.name) : "―"}</div>
-      </div>`).join("");
-  }
 
   el.innerHTML = html;
   el.querySelectorAll(".player-btn:not([disabled])").forEach(btn => {
     btn.addEventListener("click", () => setWinner(btn.dataset.cat, Number(btn.dataset.idx), Number(btn.dataset.side)));
   });
+
+  // 図を描画
+  renderBracketDiagram(
+    document.getElementById("bd-main"),
+    state.players,
+    [ state.results.qf.map(v => v !== null), state.results.sf.map(v => v !== null), [state.results.final !== null] ],
+    getFinalResult().winner, getFinalResult().loser, ["優勝", "準優勝"]
+  );
+  renderBracketDiagram(
+    document.getElementById("bd-third"),
+    getThirdPlayers(),
+    [ [state.results.third !== null] ],
+    getThirdResult().winner, getThirdResult().loser, ["第3位", "第4位"]
+  );
+  renderBracketDiagram(
+    document.getElementById("bd-fifth"),
+    [getQFResult(0).loser, getQFResult(1).loser, getQFResult(2).loser, getQFResult(3).loser],
+    [ state.results.cLower.map(v => v !== null), [state.results.fifth !== null] ],
+    getFifthResult().winner, getFifthResult().loser, ["第5位", "第6位"]
+  );
+  renderBracketDiagram(
+    document.getElementById("bd-seventh"),
+    getSeventhPlayers(),
+    [ [state.results.seventh !== null] ],
+    getSeventhResult().winner, getSeventhResult().loser, ["第7位", "第8位"]
+  );
 }
 
 function renderAll() { renderBracket(); }
