@@ -20,7 +20,9 @@
   結果の入力は「ラウンドごとのカードリスト」形式（対局者名をタップして
   勝者を選択）で行い、その内容をもとに紙のトーナメント表のような
   罫線でつないだブラケット図（本戦・3位決定戦・5位決定戦・7位決定戦）を
-  自動で描画する。決定済みの試合は罫線が色付きになる。
+  自動で描画する。罫線は常にグレーで骨組みを描き、実際に勝ち上がった
+  経路だけを赤で上書きする（負けた側の線は最後までグレーのまま）ため、
+  誰が勝ったかが一目でわかる。
   上位ラウンドの結果を変更した場合、その結果に依存する下流の試合結果は
   自動的にクリアされる。
 
@@ -55,7 +57,8 @@
   - 大会名・対局者8名の設定
   - 結果入力（ラウンドごとのカード表示。対局者名タップで勝者選択）
   - トーナメント図（罫線でつないだブラケット表示。本戦・3位決定戦・
-    5位決定戦・7位決定戦。決定済みの試合は色付きの罫線で表示）
+    5位決定戦・7位決定戦。勝ち上がった経路だけ赤で表示され、負けた側は
+    グレーのまま残るので、誰が勝ったかが一目でわかる）
   - 3位決定戦・5位決定戦・7位決定戦の自動組み合わせ
   - 結果だけリセット（対局者名は保持）
   - 新しい大会にする（現在の大会をアーカイブして白紙に戻す）
@@ -155,13 +158,14 @@
   .bd-scroll { overflow-x: auto; padding-bottom: 4px; }
   .bd-wrap { position: relative; }
   .bd-box {
-    position: absolute; display: flex; align-items: center; justify-content: center;
-    background: #fff; border: 1px solid #ddd8cc; border-radius: 4px;
-    font-size: 0.72rem; font-weight: bold; color: #444; padding: 0 6px;
+    position: absolute; box-sizing: border-box;
+    background: #fff; border: 1px solid #ddd8cc; border-radius: 5px;
+    font-size: 0.86rem; font-weight: bold; color: #444; padding: 0 6px;
+    text-align: center;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .bd-out { flex-direction: column; line-height: 1.3; border-color: #b89752; background: #fdf8ee; }
-  .bd-out-label { font-size: 0.58rem; color: #b89752; font-weight: bold; letter-spacing: 0.05em; }
+  .bd-out { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.25; border-color: #b89752; background: #fdf8ee; }
+  .bd-out-label { font-size: 0.62rem; color: #b89752; font-weight: bold; letter-spacing: 0.05em; }
   .bd-decided { background: #2c3e50; border-color: #2c3e50; color: #fff; }
   .bd-decided .bd-out-label { color: #f0c987; }
   .bracket-divider { border-top: 1px dashed #ccc; margin: 22px 0; }
@@ -393,13 +397,18 @@ function setWinner(cat, idx, side) {
 
 // ---------- トーナメント図（ブラケット線） ----------
 // leaves: 末端の対局者名の配列（長さは2のべき乗）
-// decidedLevels: ラウンドごとの決定済みフラグ配列（decidedLevels[r][i]）
+// winnerSideLevels: ラウンドごとの勝者サイド配列（winnerSideLevels[r][i] は 0/1/null。
+//   0=そのカードの上側が勝ち、1=下側が勝ち、null=未定）
 // winnerName/loserName: 最終的な勝者・敗者名（未定ならnull）
 // outputLabels: [勝者側の見出し, 敗者側の見出し]（例：["優勝","準優勝"]）
-function renderBracketDiagram(container, leaves, decidedLevels, winnerName, loserName, outputLabels) {
+//
+// 罫線は常にグレーで骨組みを描き、実際に勝ち上がった経路だけ赤で上書きする。
+// 負けた側の線は最後まで（最終順位ボックスへの線も含めて）グレーのまま。
+function renderBracketDiagram(container, leaves, winnerSideLevels, winnerName, loserName, outputLabels) {
   const n = leaves.length;
   const rounds = Math.log2(n);
-  const rowH = 34, leafW = 108, boxH = 26, stepW = 30, outBoxW = 108, gapOut = boxH + 10;
+  const rowH = 46, leafW = 120, boxH = 34, stepW = 30, outBoxW = 120, gapOut = boxH + 12;
+  const GRAY = "#d8d2c2", RED = "#b03a2e";
 
   // 各段の中心y座標を計算（levels[0]=葉、levels[rounds]=最終合流点）
   const levels = [Array.from({ length:n }, (_, i) => (i + 0.5) * rowH)];
@@ -416,11 +425,13 @@ function renderBracketDiagram(container, leaves, decidedLevels, winnerName, lose
   const totalW = xAfterRounds + stepW + outBoxW + 4;
   const totalH = n * rowH;
 
-  let lines = "", boxes = "";
+  const seg = (x1,y1,x2,y2,color,w) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${w}"/>`;
+
+  let baseLines = "", winLines = "", boxes = "";
 
   leaves.forEach((name, i) => {
     const y = levels[0][i] - boxH / 2;
-    boxes += `<div class="bd-box" style="left:0px; top:${y}px; width:${leafW}px; height:${boxH}px">${name ? escapeHtml(name) : "―"}</div>`;
+    boxes += `<div class="bd-box" style="left:0px; top:${y}px; width:${leafW}px; height:${boxH}px; line-height:${boxH}px">${name ? escapeHtml(name) : "―"}</div>`;
   });
 
   for (let r = 0; r < rounds; r++) {
@@ -428,24 +439,29 @@ function renderBracketDiagram(container, leaves, decidedLevels, winnerName, lose
     const xIn = leafW + r * stepW, xMid = xIn + stepW / 2, xOut = leafW + (r+1) * stepW;
     for (let i = 0; i < toYs.length; i++) {
       const yTop = fromYs[2*i], yBot = fromYs[2*i+1], yMid = toYs[i];
-      const decided = !!(decidedLevels[r] && decidedLevels[r][i]);
-      const c = decided ? "#b03a2e" : "#d8d2c2", w = decided ? 2.5 : 1.5;
-      lines += `<line x1="${xIn}" y1="${yTop}" x2="${xMid}" y2="${yTop}" stroke="${c}" stroke-width="${w}"/>`;
-      lines += `<line x1="${xIn}" y1="${yBot}" x2="${xMid}" y2="${yBot}" stroke="${c}" stroke-width="${w}"/>`;
-      lines += `<line x1="${xMid}" y1="${yTop}" x2="${xMid}" y2="${yBot}" stroke="${c}" stroke-width="${w}"/>`;
-      lines += `<line x1="${xMid}" y1="${yMid}" x2="${xOut}" y2="${yMid}" stroke="${c}" stroke-width="${w}"/>`;
+      // 骨組み（常にグレー）
+      baseLines += seg(xIn,yTop,xMid,yTop,GRAY,1.5) + seg(xIn,yBot,xMid,yBot,GRAY,1.5)
+                 + seg(xMid,yTop,xMid,yBot,GRAY,1.5) + seg(xMid,yMid,xOut,yMid,GRAY,1.5);
+      // 勝者側だけ赤で上書き
+      const side = winnerSideLevels[r] ? winnerSideLevels[r][i] : null;
+      if (side === 0 || side === 1) {
+        const yWin = side === 0 ? yTop : yBot;
+        winLines += seg(xIn,yWin,xMid,yWin,RED,2.5) + seg(xMid,yWin,xMid,yMid,RED,2.5) + seg(xMid,yMid,xOut,yMid,RED,2.5);
+      }
     }
   }
 
-  // 最終合流点 → 勝者・敗者の出力ボックスへの分岐線
+  // 最終合流点 → 勝者・敗者の出力ボックスへの分岐（敗者側の線はグレーのまま）
   {
     const xIn = xAfterRounds, xMid = xIn + stepW / 2, xOut = xIn + stepW;
-    const decided = !!(decidedLevels[rounds-1] && decidedLevels[rounds-1][0]);
-    const c = decided ? "#b03a2e" : "#d8d2c2", w = decided ? 2.5 : 1.5;
-    lines += `<line x1="${xIn}" y1="${finalY}" x2="${xMid}" y2="${finalY}" stroke="${c}" stroke-width="${w}"/>`;
-    lines += `<line x1="${xMid}" y1="${outTopY}" x2="${xMid}" y2="${outBotY}" stroke="${c}" stroke-width="${w}"/>`;
-    lines += `<line x1="${xMid}" y1="${outTopY}" x2="${xOut}" y2="${outTopY}" stroke="${c}" stroke-width="${w}"/>`;
-    lines += `<line x1="${xMid}" y1="${outBotY}" x2="${xOut}" y2="${outBotY}" stroke="${c}" stroke-width="${w}"/>`;
+    baseLines += seg(xIn,finalY,xMid,finalY,GRAY,1.5)
+               + seg(xMid,outTopY,xMid,outBotY,GRAY,1.5)
+               + seg(xMid,outTopY,xOut,outTopY,GRAY,1.5)
+               + seg(xMid,outBotY,xOut,outBotY,GRAY,1.5);
+    const decided = !!(winnerSideLevels[rounds-1] && (winnerSideLevels[rounds-1][0] === 0 || winnerSideLevels[rounds-1][0] === 1));
+    if (decided) {
+      winLines += seg(xIn,finalY,xMid,finalY,RED,2.5) + seg(xMid,finalY,xMid,outTopY,RED,2.5) + seg(xMid,outTopY,xOut,outTopY,RED,2.5);
+    }
   }
 
   boxes += `<div class="bd-box bd-out ${winnerName ? "bd-decided" : ""}" style="left:${xAfterRounds+stepW}px; top:${outTopY-boxH/2}px; width:${outBoxW}px; height:${boxH}px">
@@ -456,7 +472,7 @@ function renderBracketDiagram(container, leaves, decidedLevels, winnerName, lose
   </div>`;
 
   container.innerHTML = `<div class="bd-scroll"><div class="bd-wrap" style="width:${totalW}px; height:${totalH}px">
-    <svg width="${totalW}" height="${totalH}" style="position:absolute;top:0;left:0">${lines}</svg>
+    <svg width="${totalW}" height="${totalH}" style="position:absolute;top:0;left:0">${baseLines}${winLines}</svg>
     ${boxes}
   </div></div>`;
 }
@@ -527,25 +543,25 @@ function renderBracket() {
   renderBracketDiagram(
     document.getElementById("bd-main"),
     state.players,
-    [ state.results.qf.map(v => v !== null), state.results.sf.map(v => v !== null), [state.results.final !== null] ],
+    [ state.results.qf, state.results.sf, [state.results.final] ],
     getFinalResult().winner, getFinalResult().loser, ["優勝", "準優勝"]
   );
   renderBracketDiagram(
     document.getElementById("bd-third"),
     getThirdPlayers(),
-    [ [state.results.third !== null] ],
+    [ [state.results.third] ],
     getThirdResult().winner, getThirdResult().loser, ["第3位", "第4位"]
   );
   renderBracketDiagram(
     document.getElementById("bd-fifth"),
     [getQFResult(0).loser, getQFResult(1).loser, getQFResult(2).loser, getQFResult(3).loser],
-    [ state.results.cLower.map(v => v !== null), [state.results.fifth !== null] ],
+    [ state.results.cLower, [state.results.fifth] ],
     getFifthResult().winner, getFifthResult().loser, ["第5位", "第6位"]
   );
   renderBracketDiagram(
     document.getElementById("bd-seventh"),
     getSeventhPlayers(),
-    [ [state.results.seventh !== null] ],
+    [ [state.results.seventh] ],
     getSeventhResult().winner, getSeventhResult().loser, ["第7位", "第8位"]
   );
 }
