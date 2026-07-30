@@ -17,6 +17,10 @@
         下位準決勝の勝者2名 → 5位決定戦 → 5位・6位
         下位準決勝の敗者2名 → 7位決定戦 → 7位・8位
 
+  対局者名の入力は、⚙️設定タブでまとめて入力する方法と、
+  🖼トーナメント表の本戦の枠を直接タップして1人ずつ入力・修正する
+  方法の両方に対応する。
+
   結果の入力は「ラウンドごとのカードリスト」形式（対局者名をタップして
   勝者を選択）で行い、その内容をもとに紙のトーナメント表のような
   罫線でつないだブラケット図（本戦・3位決定戦・5位決定戦・7位決定戦）を
@@ -54,7 +58,8 @@
   ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
 
 【主な機能（現時点）】
-  - 大会名・対局者8名の設定
+  - 大会名・対局者8名の設定（⚙️設定タブでまとめて入力／トーナメント図の
+    本戦の枠を直接タップして1人ずつ入力・修正、の両方に対応）
   - 結果入力（ラウンドごとのカード表示。対局者名タップで勝者選択）
   - トーナメント図（罫線でつないだブラケット表示。本戦・3位決定戦・
     5位決定戦・7位決定戦。勝ち上がった経路だけ赤で表示され、負けた側は
@@ -166,6 +171,9 @@
   }
   .bd-out { display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.25; border-color: #b89752; background: #fdf8ee; }
   .bd-out-label { font-size: 0.62rem; color: #b89752; font-weight: bold; letter-spacing: 0.05em; }
+  .bd-editable { cursor: pointer; border-style: dashed; }
+  .bd-editable:active { background: #f5f0e0; }
+  .bd-placeholder { color: #bbb; font-weight: normal; }
   .bd-decided { background: #2c3e50; border-color: #2c3e50; color: #fff; }
   .bd-decided .bd-out-label { color: #f0c987; }
   .bracket-divider { border-top: 1px dashed #ccc; margin: 22px 0; }
@@ -404,7 +412,10 @@ function setWinner(cat, idx, side) {
 //
 // 罫線は常にグレーで骨組みを描き、実際に勝ち上がった経路だけ赤で上書きする。
 // 負けた側の線は最後まで（最終順位ボックスへの線も含めて）グレーのまま。
-function renderBracketDiagram(container, leaves, winnerSideLevels, winnerName, loserName, outputLabels) {
+// editable: true の場合、葉ボックス（対局者名）をタップして直接編集できる
+//   （本戦の1回戦＝対局者8名の入力に使う。3位/5位/7位決定戦の図は結果から自動計算される
+//   ため編集不可＝falseのまま呼び出す）
+function renderBracketDiagram(container, leaves, winnerSideLevels, winnerName, loserName, outputLabels, editable) {
   const n = leaves.length;
   const rounds = Math.log2(n);
   const rowH = 46, leafW = 120, boxH = 34, stepW = 30, outBoxW = 120, gapOut = boxH + 12;
@@ -431,7 +442,10 @@ function renderBracketDiagram(container, leaves, winnerSideLevels, winnerName, l
 
   leaves.forEach((name, i) => {
     const y = levels[0][i] - boxH / 2;
-    boxes += `<div class="bd-box" style="left:0px; top:${y}px; width:${leafW}px; height:${boxH}px; line-height:${boxH}px">${name ? escapeHtml(name) : "―"}</div>`;
+    const cls = "bd-box" + (editable ? " bd-editable" : "");
+    const attr = editable ? ` data-leaf-idx="${i}"` : "";
+    const label = name ? escapeHtml(name) : (editable ? `<span class="bd-placeholder">対局者${i+1}</span>` : "―");
+    boxes += `<div class="${cls}" style="left:0px; top:${y}px; width:${leafW}px; height:${boxH}px; line-height:${boxH}px"${attr}>${label}</div>`;
   });
 
   for (let r = 0; r < rounds; r++) {
@@ -475,6 +489,21 @@ function renderBracketDiagram(container, leaves, winnerSideLevels, winnerName, l
     <svg width="${totalW}" height="${totalH}" style="position:absolute;top:0;left:0">${baseLines}${winLines}</svg>
     ${boxes}
   </div></div>`;
+
+  if (editable) {
+    container.querySelectorAll(".bd-editable").forEach(box => {
+      box.addEventListener("click", () => editLeafName(Number(box.dataset.leafIdx)));
+    });
+  }
+}
+
+// トーナメント図の葉ボックスをタップして対局者名を直接編集する
+function editLeafName(idx) {
+  const current = state.players[idx] || "";
+  const input = prompt(`対局者${idx+1}の名前を入力してください`, current);
+  if (input === null) return; // キャンセル
+  state.players[idx] = input.trim();
+  pushState();
 }
 
 // ---------- 描画 ----------
@@ -494,16 +523,13 @@ function matchCardHTML(label, cat, idx, players, resultVal) {
 
 function renderBracket() {
   const el = document.getElementById("panel-bracket");
-  if (!state.players.some(p => p)) {
-    el.innerHTML = `<p style="color:#999;font-size:0.9rem">⚙️設定タブで大会名と対局者を入力してください。</p>`;
-    return;
-  }
 
   let html = "";
   if (state.title) html += `<h3 style="margin-bottom:16px">${escapeHtml(state.title)}</h3>`;
 
   // ===== トーナメント図 =====
   html += `<h4 class="section-head">🖼 トーナメント表</h4>`;
+  html += `<p class="note" style="margin-top:-2px">本戦の対局者名は、下の枠を直接タップして入力・修正できます。</p>`;
   html += `<div class="bracket-block"><div class="bracket-block-title">本戦</div><div id="bd-main"></div></div>`;
   html += `<div class="bracket-block"><div class="bracket-block-title">3位決定戦</div><div id="bd-third"></div></div>`;
   html += `<div class="bracket-divider"></div>`;
@@ -544,7 +570,8 @@ function renderBracket() {
     document.getElementById("bd-main"),
     state.players,
     [ state.results.qf, state.results.sf, [state.results.final] ],
-    getFinalResult().winner, getFinalResult().loser, ["優勝", "準優勝"]
+    getFinalResult().winner, getFinalResult().loser, ["優勝", "準優勝"],
+    true
   );
   renderBracketDiagram(
     document.getElementById("bd-third"),
