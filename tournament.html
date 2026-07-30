@@ -1,0 +1,527 @@
+<!--
+================================================================================
+  このアプリについて
+  大会トーナメント表 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  「大石道場杯」のような単発の大会（8人・勝ち抜き方式）の対戦表を、
+  仲間内でリアルタイムに共有しながら記録・閲覧するためのアプリ。
+  紙のトーナメント表（1回戦→準決勝→決勝、3位決定戦、5位・7位決定戦）を
+  デジタルで再現する。
+
+【対戦形式（固定・8人）】
+  本戦：1回戦(4試合) → 準決勝(2試合) → 決勝 → 優勝・準優勝
+        準決勝の敗者2名 → 3位決定戦 → 3位・4位
+  下位：1回戦の敗者4名 → 下位準決勝(2試合)
+        下位準決勝の勝者2名 → 5位決定戦 → 5位・6位
+        下位準決勝の敗者2名 → 7位決定戦 → 7位・8位
+
+  勝敗はモバイル画面での見やすさを優先し、罫線でつないだ図ではなく
+  「ラウンドごとのカードリスト」形式で表示する（対局者名をタップして
+  勝者を選択）。上位ラウンドの結果を変更した場合、その結果に依存する
+  下流の試合結果は自動的にクリアされる。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 tournament.html で完結）
+  - Firebase Realtime Database によるリアルタイム同期
+
+【セキュリティ】
+  - 合言葉認証あり（他アプリと共通の合言葉）
+  - 認証情報はブラウザのlocalStorageに保存される
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（igo.html/mahjong.htmlと同じプロジェクトを使用）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - 新しい技術より、継続して利用しやすい構成を優先する
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読みやすく・触りやすく・壊れにくい構成を選ぶ
+  ・新しい技術より、長く使い続けられることを優先する
+  ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
+
+【主な機能（現時点）】
+  - 大会名・対局者8名の設定
+  - トーナメント表（ラウンドごとのカード表示。対局者名タップで勝者選択）
+  - 3位決定戦・5位決定戦・7位決定戦の自動組み合わせ
+  - 最終順位まとめ（優勝〜8位）
+  - 結果だけリセット（対局者名は保持）
+  - 新しい大会にする（現在の大会をアーカイブして白紙に戻す）
+  - 過去の大会アーカイブ表示
+  - Firebase によるリアルタイム同期
+
+【今後の改良候補】
+  - 人数を可変にする（4人・16人など）
+  - 不戦勝（空き枠）対応
+  - 対局日・対局場所などのメモ欄
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大会トーナメント表</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", YuGothic, sans-serif;
+    background: #fcfaf2; color: #333;
+  }
+  #app { max-width: 500px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  #header { background: #2c3e50; color: #fff; padding: 14px 16px 10px; text-align: center; position: sticky; top: 0; z-index: 101; }
+  #header h1 { font-size: 1.1rem; letter-spacing: 2px; font-weight: bold; }
+  #sync-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 5px; }
+  #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; }
+  #sync-label { font-size: 0.7rem; color: #aed6f1; }
+
+  #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; position: sticky; top: 0; z-index: 100; }
+  .tab-btn {
+    flex: 1; padding: 11px 4px; border: none; background: none;
+    font-size: 0.85rem; font-weight: bold; color: #777; cursor: pointer;
+    border-bottom: 3px solid transparent;
+  }
+  .tab-btn.active { color: #2c3e50; background: #fff; border-bottom-color: #b89752; }
+
+  #content { padding: 18px 16px; flex: 1; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  h3 { border-left: 4px solid #b89752; padding-left: 8px; margin-bottom: 12px; color: #2c3e50; font-size: 1rem; }
+  h4.section-head { border-left: 4px solid #b89752; padding-left: 8px; color: #2c3e50; margin: 20px 0 10px; font-size: 0.92rem; }
+  h4.section-head:first-child { margin-top: 0; }
+  .note { font-size: 0.8rem; color: #888; margin: -6px 0 14px; line-height: 1.5; }
+
+  .fg { margin-bottom: 12px; }
+  label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 0.86rem; color: #444; }
+  input {
+    width: 100%; padding: 10px; border: 1px solid #ddd8cc;
+    border-radius: 6px; font-size: 1rem; background: #fff;
+  }
+  .btn {
+    width: 100%; padding: 12px; background: #2c3e50; color: #fff;
+    border: none; border-radius: 6px; font-size: 0.95rem;
+    font-weight: bold; cursor: pointer; letter-spacing: 1px; margin-top: 4px;
+  }
+  .btn:active { opacity: 0.85; }
+
+  #setup-banner {
+    background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+    padding: 14px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 0.85rem; line-height: 1.7; display: none;
+  }
+
+  .match-card {
+    background: #fdfdfb; border: 1px solid #e0dbcd; border-radius: 8px;
+    padding: 8px 10px; margin-bottom: 8px;
+  }
+  .match-label { font-size: 0.7rem; color: #b89752; font-weight: bold; margin-bottom: 4px; }
+  .match-row { display: flex; align-items: center; gap: 8px; }
+  .player-btn {
+    flex: 1; padding: 10px 6px; font-size: 0.9rem; font-weight: bold;
+    border: 1px solid #ddd8cc; border-radius: 6px; background: #fff;
+    color: #444; cursor: pointer; font-family: inherit; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .player-btn.winner { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+  .player-btn.disabled { color: #bbb; background: #f5f4ee; cursor: default; }
+  .vs { font-size: 0.72rem; color: #999; flex-shrink: 0; }
+
+  .standings-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid #e8e4da;
+  }
+  .standings-num { width: 34px; font-size: 1.05rem; text-align: center; flex-shrink: 0; }
+  .standings-name { font-weight: bold; font-size: 0.92rem; }
+
+  .archive-card {
+    background: #f1f0ea; border: 1px solid #e0dbcd; border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px; font-size: 0.85rem;
+  }
+
+  #admin-toggle {
+    cursor: pointer; padding: 12px 0; display: flex; align-items: center; gap: 8px;
+    color: #2c3e50; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #e0dbcd;
+  }
+
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #2c3e50; color: #fff; padding: 10px 18px;
+    border-radius: 20px; font-size: 0.88rem; z-index: 999;
+    display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+</style>
+</head>
+<body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
+<div id="app">
+
+  <div id="header">
+    <h1>🏆 大会トーナメント表</h1>
+    <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
+  </div>
+
+  <div id="nav">
+    <button class="tab-btn active" data-tab="bracket">🏆トーナメント</button>
+    <button class="tab-btn" data-tab="setup">⚙️設定</button>
+  </div>
+
+  <div id="content">
+
+    <div class="panel active" id="panel-bracket"></div>
+
+    <div class="panel" id="panel-setup">
+      <div id="setup-banner">
+        ⚙️ <strong>Firebase未設定 — ローカル動作中</strong><br>
+        全員でリアルタイム共有するには <code>firebaseConfig</code> を設定してください。
+      </div>
+
+      <h3>大会設定</h3>
+      <p class="note">対局者名を入れて保存すると、シード順（1〜8）で1回戦の組み合わせが決まります。</p>
+      <div class="fg"><label>大会名</label><input id="t-title" type="text" placeholder="例：大石道場杯"></div>
+      <div class="fg"><label>対局者 1</label><input id="t-p0" type="text"></div>
+      <div class="fg"><label>対局者 2</label><input id="t-p1" type="text"></div>
+      <div class="fg"><label>対局者 3</label><input id="t-p2" type="text"></div>
+      <div class="fg"><label>対局者 4</label><input id="t-p3" type="text"></div>
+      <div class="fg"><label>対局者 5</label><input id="t-p4" type="text"></div>
+      <div class="fg"><label>対局者 6</label><input id="t-p5" type="text"></div>
+      <div class="fg"><label>対局者 7</label><input id="t-p6" type="text"></div>
+      <div class="fg"><label>対局者 8</label><input id="t-p7" type="text"></div>
+      <button class="btn" id="save-setup">保存して全員に同期</button>
+
+      <div id="admin-toggle" style="margin-top:24px">
+        <span id="admin-arrow">▶</span>
+        <span>管理者の仕事</span>
+      </div>
+      <div id="admin-body" style="display:none;margin-top:16px">
+        <h3>結果のリセット</h3>
+        <p class="note">対局者名はそのまま残し、勝敗記録だけ消去します。入力ミスの修正にお使いください。</p>
+        <button class="btn" id="reset-results" style="background:#e67e22">結果だけリセット</button>
+
+        <h3 style="margin-top:24px">新しい大会にする</h3>
+        <p class="note">現在の大会をアーカイブに保存してから、大会名・対局者・結果をすべて白紙に戻します。</p>
+        <button class="btn" id="new-tournament" style="background:#e74c3c">現在の大会をアーカイブして新しく始める</button>
+
+        <h3 style="margin-top:24px">過去の大会</h3>
+        <div id="archive-list"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+  authDomain:        "hiking-558a9.firebaseapp.com",
+  databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+  projectId:         "hiking-558a9",
+  storageBucket:     "hiking-558a9.firebasestorage.app",
+  messagingSenderId: "1066293850319",
+  appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+};
+
+function emptyResults() {
+  return { qf:[null,null,null,null], sf:[null,null], final:null, third:null, cLower:[null,null], fifth:null, seventh:null };
+}
+
+let state = { title:"", players:["","","","","","","",""], results: emptyResults() };
+let stateRef = null, archiveRef = null;
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+let editingSetup = false;
+
+if (isConfigured) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    stateRef   = firebase.database().ref("tournament/state");
+    archiveRef = firebase.database().ref("tournament/archive");
+    stateRef.on("value", snap => {
+      const data = snap.val();
+      if (data) {
+        state = {
+          title:   typeof data.title === "string" ? data.title : "",
+          players: Array.isArray(data.players) && data.players.length === 8 ? data.players : state.players,
+          results: data.results ? { ...emptyResults(), ...data.results } : emptyResults()
+        };
+        if (!editingSetup) fillSettingsInputs();
+        renderAll();
+      }
+      setSyncStatus(true);
+    }, () => setSyncStatus(false));
+    renderArchive();
+  } catch(e) {
+    console.error("Firebase init failed:", e);
+    setSyncStatus(false);
+  }
+} else {
+  document.getElementById("setup-banner").style.display = "block";
+  setSyncStatus(false);
+  fillSettingsInputs();
+  renderAll();
+}
+
+function pushState() { if (stateRef) stateRef.set(state); renderAll(); }
+
+function setSyncStatus(online) {
+  const dot = document.getElementById("sync-dot");
+  const lbl = document.getElementById("sync-label");
+  if (!isConfigured) { dot.style.background = "#e67e22"; lbl.textContent = "ローカルモード（Firebase未設定）"; return; }
+  if (online) {
+    dot.style.background = "#2ecc71";
+    const now = new Date();
+    lbl.textContent = `リアルタイム同期中 · ${now.getHours()}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  } else { dot.style.background = "#e74c3c"; lbl.textContent = "オフライン"; }
+}
+function pad(n) { return String(n).padStart(2, "0"); }
+
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ---------- 組み合わせロジック ----------
+function pairResult(players, resultVal) {
+  const [a, b] = players;
+  if (resultVal === null || resultVal === undefined || !a || !b) return { winner:null, loser:null };
+  return resultVal === 0 ? { winner:a, loser:b } : { winner:b, loser:a };
+}
+function getQFPlayers(i) { return [state.players[2*i] || null, state.players[2*i+1] || null]; }
+function getQFResult(i)  { return pairResult(getQFPlayers(i), state.results.qf[i]); }
+
+function getSFPlayers(i) { return [getQFResult(2*i).winner, getQFResult(2*i+1).winner]; }
+function getSFResult(i)  { return pairResult(getSFPlayers(i), state.results.sf[i]); }
+
+function getFinalPlayers() { return [getSFResult(0).winner, getSFResult(1).winner]; }
+function getFinalResult()  { return pairResult(getFinalPlayers(), state.results.final); }
+
+function getThirdPlayers() { return [getSFResult(0).loser, getSFResult(1).loser]; }
+function getThirdResult()  { return pairResult(getThirdPlayers(), state.results.third); }
+
+function getCLowerPlayers(i) { return [getQFResult(2*i).loser, getQFResult(2*i+1).loser]; }
+function getCLowerResult(i)  { return pairResult(getCLowerPlayers(i), state.results.cLower[i]); }
+
+function getFifthPlayers() { return [getCLowerResult(0).winner, getCLowerResult(1).winner]; }
+function getFifthResult()  { return pairResult(getFifthPlayers(), state.results.fifth); }
+
+function getSeventhPlayers() { return [getCLowerResult(0).loser, getCLowerResult(1).loser]; }
+function getSeventhResult()  { return pairResult(getSeventhPlayers(), state.results.seventh); }
+
+function setWinner(cat, idx, side) {
+  if (cat === "qf") {
+    state.results.qf[idx] = side;
+    const sfIdx = Math.floor(idx/2);
+    state.results.sf[sfIdx] = null;
+    state.results.final = null;
+    state.results.third = null;
+    state.results.cLower[sfIdx] = null;
+    state.results.fifth = null;
+    state.results.seventh = null;
+  } else if (cat === "sf") {
+    state.results.sf[idx] = side;
+    state.results.final = null;
+    state.results.third = null;
+  } else if (cat === "cLower") {
+    state.results.cLower[idx] = side;
+    state.results.fifth = null;
+    state.results.seventh = null;
+  } else if (cat === "final") {
+    state.results.final = side;
+  } else if (cat === "third") {
+    state.results.third = side;
+  } else if (cat === "fifth") {
+    state.results.fifth = side;
+  } else if (cat === "seventh") {
+    state.results.seventh = side;
+  }
+  pushState();
+}
+
+// ---------- 描画 ----------
+function matchCardHTML(label, cat, idx, players, resultVal) {
+  const [a, b] = players;
+  const clickable = !!a && !!b;
+  const aSel = resultVal === 0, bSel = resultVal === 1;
+  return `<div class="match-card">
+    <div class="match-label">${label}</div>
+    <div class="match-row">
+      <button class="player-btn ${aSel?'winner':''} ${!clickable?'disabled':''}" data-cat="${cat}" data-idx="${idx}" data-side="0" ${clickable?'':'disabled'}>${a ? escapeHtml(a) : "（未定）"}</button>
+      <span class="vs">vs</span>
+      <button class="player-btn ${bSel?'winner':''} ${!clickable?'disabled':''}" data-cat="${cat}" data-idx="${idx}" data-side="1" ${clickable?'':'disabled'}>${b ? escapeHtml(b) : "（未定）"}</button>
+    </div>
+  </div>`;
+}
+
+function renderBracket() {
+  const el = document.getElementById("panel-bracket");
+  if (!state.players.some(p => p)) {
+    el.innerHTML = `<p style="color:#999;font-size:0.9rem">⚙️設定タブで大会名と対局者を入力してください。</p>`;
+    return;
+  }
+
+  let html = "";
+  if (state.title) html += `<h3 style="margin-bottom:16px">${escapeHtml(state.title)}</h3>`;
+
+  html += `<h4 class="section-head">1回戦</h4>`;
+  for (let i=0;i<4;i++) html += matchCardHTML(`第${i+1}試合`, "qf", i, getQFPlayers(i), state.results.qf[i]);
+
+  html += `<h4 class="section-head">2回戦（準決勝）</h4>`;
+  for (let i=0;i<2;i++) html += matchCardHTML(`準決勝${i+1}`, "sf", i, getSFPlayers(i), state.results.sf[i]);
+
+  html += `<h4 class="section-head">決勝</h4>`;
+  html += matchCardHTML("優勝・準優勝", "final", 0, getFinalPlayers(), state.results.final);
+
+  html += `<h4 class="section-head">3位決定戦</h4>`;
+  html += matchCardHTML("準決勝の敗者同士", "third", 0, getThirdPlayers(), state.results.third);
+
+  html += `<h4 class="section-head">下位トーナメント（1回戦の敗者）</h4>`;
+  for (let i=0;i<2;i++) html += matchCardHTML(`下位準決勝${i+1}`, "cLower", i, getCLowerPlayers(i), state.results.cLower[i]);
+
+  html += `<h4 class="section-head">5位決定戦</h4>`;
+  html += matchCardHTML("下位準決勝の勝者同士", "fifth", 0, getFifthPlayers(), state.results.fifth);
+
+  html += `<h4 class="section-head">7位決定戦</h4>`;
+  html += matchCardHTML("下位準決勝の敗者同士", "seventh", 0, getSeventhPlayers(), state.results.seventh);
+
+  const standings = [
+    { place:1, name: getFinalResult().winner },
+    { place:2, name: getFinalResult().loser },
+    { place:3, name: getThirdResult().winner },
+    { place:4, name: getThirdResult().loser },
+    { place:5, name: getFifthResult().winner },
+    { place:6, name: getFifthResult().loser },
+    { place:7, name: getSeventhResult().winner },
+    { place:8, name: getSeventhResult().loser },
+  ];
+  if (standings.some(s => s.name)) {
+    html += `<h4 class="section-head">🏅最終順位</h4>`;
+    const medals = { 1:"🥇", 2:"🥈", 3:"🥉" };
+    html += standings.map(s => `
+      <div class="standings-row">
+        <div class="standings-num">${medals[s.place] || s.place}</div>
+        <div class="standings-name">${s.name ? escapeHtml(s.name) : "―"}</div>
+      </div>`).join("");
+  }
+
+  el.innerHTML = html;
+  el.querySelectorAll(".player-btn:not([disabled])").forEach(btn => {
+    btn.addEventListener("click", () => setWinner(btn.dataset.cat, Number(btn.dataset.idx), Number(btn.dataset.side)));
+  });
+}
+
+function renderAll() { renderBracket(); }
+
+// ---------- 設定タブ ----------
+function fillSettingsInputs() {
+  document.getElementById("t-title").value = state.title || "";
+  state.players.forEach((name, i) => { document.getElementById("t-p"+i).value = name || ""; });
+}
+
+["t-title", ...[0,1,2,3,4,5,6,7].map(i=>"t-p"+i)].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener("focus", () => editingSetup = true);
+  el.addEventListener("blur",  () => editingSetup = false);
+});
+
+document.getElementById("save-setup").addEventListener("click", () => {
+  state.title = document.getElementById("t-title").value.trim();
+  state.players = [0,1,2,3,4,5,6,7].map(i => document.getElementById("t-p"+i).value.trim());
+  pushState();
+  showToast("設定を保存し、全員に同期しました！");
+});
+
+document.getElementById("admin-toggle").addEventListener("click", () => {
+  const body = document.getElementById("admin-body");
+  const arrow = document.getElementById("admin-arrow");
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "";
+  arrow.textContent = isOpen ? "▶" : "▼";
+});
+
+document.getElementById("reset-results").addEventListener("click", () => {
+  if (!confirm("対局結果をすべて消去します。対局者名はそのまま残ります。よろしいですか？")) return;
+  state.results = emptyResults();
+  pushState();
+  showToast("結果をリセットしました");
+});
+
+document.getElementById("new-tournament").addEventListener("click", () => {
+  if (!confirm("現在の大会をアーカイブし、新しい大会を始めます。よろしいですか？")) return;
+  if (archiveRef) {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+    archiveRef.push({ title: state.title, players: state.players, results: state.results, endDate: dateStr });
+  }
+  state = { title:"", players:["","","","","","","",""], results: emptyResults() };
+  pushState();
+  fillSettingsInputs();
+  showToast("新しい大会を開始しました");
+  renderArchive();
+});
+
+function renderArchive() {
+  const el = document.getElementById("archive-list");
+  if (!el || !archiveRef) return;
+  archiveRef.once("value", snap => {
+    const data = snap.val();
+    if (!data) { el.innerHTML = `<p class="note" style="margin:0">まだアーカイブされた大会はありません。</p>`; return; }
+    const list = Object.values(data).reverse();
+    el.innerHTML = list.map(t => {
+      const champion = t.results && t.results.final !== null && t.results.final !== undefined
+        ? (t.results.final === 0 ? "" : "") : "";
+      return `<div class="archive-card">
+        <strong>${escapeHtml(t.title || "（無題の大会）")}</strong>（${t.endDate || ""}）<br>
+        <span style="color:#666">対局者：${(t.players||[]).filter(p=>p).join("・")}</span>
+      </div>`;
+    }).join("");
+  });
+}
+
+// ---------- トースト ----------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.style.display = "block";
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = "none", 2500);
+}
+
+fillSettingsInputs();
+renderAll();
+</script>
+</body>
+</html>
