@@ -1,101 +1,156 @@
-<!doctype html>
+<!--
+================================================================================
+  このアプリについて
+  大石道場 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  大石道場の親睦ポータルページ。
+  大石道場メンバーが各アプリにアクセスするための入口として機能する。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 index.html で完結）
+  - 各アプリへのリンクを管理する
+
+【技術構成】
+  - 純粋なHTML/CSS（JavaScriptなし）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+  - シンプルさを最優先とする
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ
+  ・読みやすく・触りやすく・壊れにくい構成を選ぶ
+  ・新しい技術より、長く使い続けられることを優先する
+  ・アプリを追加・変更したら「収録アプリ」を合わせて更新する
+
+【収録アプリ（現時点）】
+  - 大石道場 予定（yotei.html）：合宿・大石道場杯の開催予定と参加表明の管理
+  - 大石道場杯（tournament.html）：8人勝ち抜き大会の対戦表・結果共有
+  - 大石道場合宿（gasshuku.html）：合宿の囲碁（スイス式）・麻雀・総合順位の管理
+================================================================================
+-->
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>囲碁AI v1.0</title>
-<style>
-*{box-sizing:border-box}body{margin:0;background:#f4f4f4;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif}.app{max-width:720px;margin:auto;padding:14px 12px 40px}h1{font-size:24px;margin:0}.sub{color:#666;font-size:13px;margin:3px 0 12px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:13px;margin-top:12px}.status{display:flex;justify-content:space-between;font-weight:700}.small{font-size:13px;color:#666}.board{width:min(94vw,620px);aspect-ratio:1;margin:12px auto;background:#d9a65b}.board canvas{width:100%;height:100%;display:block;touch-action:manipulation}.buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.buttons button,.card button{min-height:45px;border:1px solid #ccc;border-radius:10px;background:#fff;font:inherit}.primary{background:#222!important;color:#fff;border-color:#222!important}.danger{color:#900}.panel{display:none}.panel.on{display:block}.q{font-size:18px;font-weight:700;margin:5px 0 8px}.note{font-size:13px;color:#666;line-height:1.55}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.grid button.sel{background:#222;color:#fff;border-color:#222}.full{width:100%;margin-top:10px}.full:disabled{opacity:.45}.history button{width:100%;text-align:left}.history-item{padding:10px 0;border-bottom:1px solid #ddd}.history-item:last-child{border-bottom:0}.history-main{font-weight:700}.history-sub{font-size:12px;color:#666;line-height:1.5;margin-top:3px}.snapshot{display:none;background:#eee;border-radius:9px;padding:9px;margin-top:9px;font-size:12px}.snapshot.on{display:block}footer{font-size:11px;color:#777;margin-top:16px;line-height:1.5}@media(min-width:600px){.grid{grid-template-columns:repeat(3,1fr)}.buttons{grid-template-columns:repeat(4,1fr)}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>大石道場</title>
+
+  <style>
+    :root { color-scheme: light; }
+    html { background: #fcfaf2; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #fcfaf2;
+      color: #333;
+    }
+
+    .wrap {
+      max-width: 500px;
+      margin: 0 auto;
+      min-height: 100vh;
+      padding: 16px 18px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      margin-bottom: 6px;
+      font-size: 1.5rem;
+    }
+
+    .sub {
+      text-align: center;
+      color: #777;
+      margin-bottom: 18px;
+      font-size: 0.92rem;
+    }
+
+    .card {
+      display: block;
+      text-decoration: none;
+      background: #fff;
+      border: 1px solid #e0dbcd;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 14px;
+      color: inherit;
+      transition: 0.2s;
+    }
+
+    .card:active {
+      transform: scale(0.98);
+    }
+
+    .title {
+      font-size: 1.08rem;
+      font-weight: bold;
+      color: #2c3e50;
+      margin-bottom: 6px;
+    }
+
+    .desc {
+      font-size: 0.88rem;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .footer {
+      margin-top: 34px;
+      text-align: center;
+      color: #999;
+      font-size: 0.8rem;
+    }
+  </style>
 </head>
-<body><main class="app">
-<h1>囲碁AI v1.0</h1><div class="sub">最善手ではなく「あなたが選ぶ手」を学んでいく</div>
-<section class="card"><div class="status"><span id="turn">黒番</span><span class="small" id="moves">0手目</span></div><div id="snapshot" class="snapshot"></div></section>
-<div class="board"><canvas id="canvas"></canvas></div>
-<section class="card buttons"><button id="undo">一手戻す</button><button id="pass">パス</button><button id="think" class="primary">この局面を考える</button><button id="reset" class="danger">リセット</button></section>
-<section class="card"><b>現在の状態</b><div id="state" class="note">盤面に石を置いてください。</div></section>
-<section id="p1" class="card panel"><div class="small">STEP 1 / 4</div><div class="q">まず、自分で候補手を考える。</div><div class="note">打ってみたい場所を最大5か所タップしてください。</div><div id="myStatus" class="note" style="margin-top:8px"></div><button id="myDone" class="full primary" disabled>候補手を決定する</button><button id="cancel" class="full">終了</button></section>
-<section id="p2" class="card panel"><div class="small">STEP 2 / 4</div><div class="q">AIなら、どこを候補にする？</div><div class="note">候補生成はまだ簡易版です。ここでは「盤面上の有力度」と「あなた向き度」を分離して表示します。KataGoの評価ではありません。</div><div id="aiList" class="grid"></div><div id="prefList" class="note" style="margin-top:10px"></div><div id="aiStatus" class="note" style="margin-top:8px"></div><button id="aiDone" class="full primary">AI候補を確認する</button></section>
-<section id="p3" class="card panel"><div class="small">STEP 3 / 4</div><div class="q">この局面なら、どの手を打ちたい？</div><div class="note">自分の候補とAI候補を見比べて、最終的に一番打ちたい手を1つ選びます。</div><div id="choiceList" class="grid"></div><div id="choice" class="note" style="margin-top:8px">未選択</div><button id="choiceDone" class="full primary" disabled>この手を選ぶ</button></section>
-<section id="p4" class="card panel"><div class="small">STEP 4 / 4</div><div class="q">AI候補を見て、どう感じた？</div><div id="reaction" class="grid"><button data-v="思いついていた">思いついていた</button><button data-v="思いつかなかった">思いつかなかった</button><button data-v="面白い">面白い</button><button data-v="打ちたくない">打ちたくない</button><button data-v="自分とは違う">自分とは違う</button><button data-v="よく分からない">よく分からない</button></div><div class="q" style="font-size:16px;margin-top:14px">なぜその手を選んだ？</div><div id="reason" class="grid"><button data-v="攻めたい">攻めたい</button><button data-v="地を取りたい">地を取りたい</button><button data-v="厚みを活かしたい">厚みを活かしたい</button><button data-v="相手の弱点を突きたい">相手の弱点を突きたい</button><button data-v="自分を安定させたい">自分を安定させたい</button><button data-v="大きそうだから">大きそうだから</button><button data-v="戦いを起こしたい">戦いを起こしたい</button><button data-v="直感">直感</button><button data-v="その他">その他</button></div><button id="save" class="full primary" disabled>判断を保存する</button></section>
-<section class="card"><b>あなたの傾向</b><div id="profile" class="note" style="margin-top:8px">まだ十分な判断データがありません。</div></section><section class="card"><b>学習状態</b><div id="model" class="note" style="margin-top:8px">過去の選択から、あなた向きの手を学習します。</div></section><section class="card"><b>手の選び方</b><div class="note" style="margin-top:8px">「盤面上の有力度」と「あなた向き度」をどのくらい重視するかを調整できます。</div><label style="display:block;margin-top:10px">あなた向き度：<input id="prefWeight" type="range" min="0" max="100" value="70" style="width:100%"></label><div id="weightText" class="small">あなた向き 70% ／ 盤面上の有力度 30%</div></section>
+<body>
 
-<section class="card"><b>あなたの判断モデル v1.0</b><div class="note" style="margin-top:8px">AIが「あなたはこういう棋風」と決めつけるのではなく、これまでの<strong>実際の選択理由</strong>と候補手の特徴から、局面ごとの判断軸を推定します。</div><div id="preferenceProfile" class="note" style="margin-top:10px"></div><div id="preferenceCorrection" style="margin-top:10px"></div></section>
-<section class="card history"><b>判断履歴</b><div id="history" class="note" style="margin-top:8px"></div><button id="clear" class="full">履歴をすべて削除</button></section>
-<footer>判断履歴には、その瞬間の19×19盤面を完全なスナップショットとして保存します。さらに、選んだ手を実戦で打ったか、後から結果をどう評価したかも記録できます。保存先はこのiPhoneのブラウザ内です。</footer>
+<div class="wrap">
 
-<section class="card" id="engine-card">
-<h2>AIエンジン接続層</h2>
-<div class="small" style="margin-bottom:8px"><b>現在:</b> ローカル簡易評価＋KataGo結果の取り込みに対応。</div>
-<div class="note">v0.8では、KataGo Analysis EngineのJSON入出力に合わせた「接続口」を作りました。ブラウザだけでKataGo本体を実行するのではなく、将来ローカルWebAssemblyまたは別端末・サーバーのKataGoへ交換できる構造です。</div>
-<div class="grid" style="margin-top:10px">
-<button id="makeKataQuery">KataGo問い合わせJSONを作る</button><button id="loadKataResponse">解析結果JSONを読み込む</button>
+  <h1>大石道場</h1>
+
+  <div class="sub">
+    大石道場アプリ
+  </div>
+
+  <a class="card" href="yotei.html">
+    <div class="title">📅 大石道場 予定</div>
+    <div class="desc">
+      合宿・大石道場杯の開催予定と参加表明。<br>
+      次はいつ、誰が来るかをまとめて確認。
+    </div>
+  </a>
+
+  <a class="card" href="tournament.html">
+    <div class="title">🏆 大石道場杯</div>
+    <div class="desc">
+      8人勝ち抜き大会の対戦表アプリ。<br>
+      1回戦から順位決定戦まで、結果をみんなで共有。
+    </div>
+  </a>
+
+  <a class="card" href="gasshuku.html">
+    <div class="title">🏕️ 大石道場合宿</div>
+    <div class="desc">
+      合宿の囲碁（スイス式）・麻雀の記録アプリ。<br>
+      合宿ごとの総合順位も自動で算出。
+    </div>
+  </a>
+
+  <div class="footer">
+    GitHub Pages + Firebase
+  </div>
+
 </div>
-<textarea id="kataJson" style="width:100%;min-height:170px;margin-top:10px;border:1px solid #ccc;border-radius:10px;padding:10px;font:12px ui-monospace,monospace" placeholder="KataGo Analysis EngineのJSONをここに貼り付けます"></textarea>
-<div id="engineResult" class="note" style="margin-top:8px">まだKataGoの解析結果はありません。</div>
-</section>
 
-</main>
-<script>
-'use strict';
-const N=19,KEY='igo-ai-decisions-v06',OLDKEY='igo-ai-decisions-v05';let board=empty(),turn='black',moveNo=0,historyMoves=[],thinking=false,my=[],ai=[],chosen=null,reaction=null,reason=null,snapshot=false,live=null;
-const $=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');
-function empty(){return Array.from({length:N},()=>Array(N).fill(null))}function clone(b){return b.map(r=>r.slice())}
-function coord(r,c){const letters='ABCDEFGHJKLMNOPQRST';return letters[c]+(N-r)}
-function geo(){const w=document.querySelector('.board').clientWidth,p=w*.055,s=(w-2*p)/18;return{w,p,s}}
-function draw(){const g=geo();canvas.width=g.w*devicePixelRatio;canvas.height=g.w*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);ctx.clearRect(0,0,g.w,g.w);ctx.fillStyle='#d9a65b';ctx.fillRect(0,0,g.w,g.w);ctx.strokeStyle='#5b421f';ctx.lineWidth=1;for(let i=0;i<N;i++){let p=g.p+i*g.s;ctx.beginPath();ctx.moveTo(g.p,p);ctx.lineTo(g.w-g.p,p);ctx.stroke();ctx.beginPath();ctx.moveTo(p,g.p);ctx.lineTo(p,g.w-g.p);ctx.stroke()}for(const [r,c] of [[3,3],[3,9],[3,15],[9,3],[9,9],[9,15],[15,3],[15,9],[15,15]]){let x=g.p+c*g.s,y=g.p+r*g.s;ctx.fillStyle='#5b421f';ctx.beginPath();ctx.arc(x,y,Math.max(2,g.s*.1),0,7);ctx.fill()}for(let r=0;r<N;r++)for(let c=0;c<N;c++)if(board[r][c])stone(r,c,board[r][c],g);if(thinking){my.forEach((p,i)=>mark(p.r,p.c,String(i+1),g));ai.forEach((p,i)=>mark(p.r,p.c,'A'+(i+1),g));if(chosen)outline(chosen.r,chosen.c,g)}}
-function stone(r,c,col,g){let x=g.p+c*g.s,y=g.p+r*g.s,rad=g.s*.46;ctx.beginPath();ctx.arc(x+1.5,y+1.5,rad,0,7);ctx.fillStyle='rgba(0,0,0,.2)';ctx.fill();ctx.beginPath();ctx.arc(x,y,rad,0,7);ctx.fillStyle=col==='black'?'#111':'#eee';ctx.fill();ctx.strokeStyle=col==='black'?'#000':'#888';ctx.stroke()}
-function mark(r,c,t,g){if(board[r][c])return;let x=g.p+c*g.s,y=g.p+r*g.s;ctx.beginPath();ctx.arc(x,y,g.s*.27,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#222';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#222';ctx.font='bold '+Math.max(9,g.s*.23)+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t,x,y)}function outline(r,c,g){let x=g.p+c*g.s,y=g.p+r*g.s;ctx.beginPath();ctx.arc(x,y,g.s*.4,0,7);ctx.strokeStyle='#000';ctx.lineWidth=3;ctx.stroke()}
-function point(e){const rect=canvas.getBoundingClientRect(),g=geo(),x=e.clientX-rect.left,y=e.clientY-rect.top,c=Math.round((x-g.p)/g.s),r=Math.round((y-g.p)/g.s);return r>=0&&r<N&&c>=0&&c<N?{r,c}:null}
-canvas.addEventListener('pointerdown',e=>{e.preventDefault();if(snapshot)return;let p=point(e);if(!p)return;if(thinking){if(board[p.r][p.c])return;let i=my.findIndex(x=>x.r===p.r&&x.c===p.c);if(i>=0)my.splice(i,1);else if(my.length<5)my.push(p);renderMy();draw();return}if(!board[p.r][p.c])play(p.r,p.c,turn)})
-function neigh(r,c){return[[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([a,b])=>a>=0&&a<N&&b>=0&&b<N)}
-function group(r,c){const col=board[r][c],out=[],seen=new Set(),q=[[r,c]];while(q.length){const p=q.pop(),k=p[0]+','+p[1];if(seen.has(k)||board[p[0]][p[1]]!==col)continue;seen.add(k);out.push(p);neigh(p[0],p[1]).forEach(x=>q.push(x))}return out}
-function libs(g){const s=new Set();g.forEach(([r,c])=>neigh(r,c).forEach(([a,b])=>{if(!board[a][b])s.add(a+','+b)}));return s}
-function play(r,c,col){board[r][c]=col;let opp=col==='black'?'white':'black',capt=[];neigh(r,c).forEach(([a,b])=>{if(board[a][b]===opp){let g=group(a,b);if(!libs(g).size)g.forEach(([x,y])=>{board[x][y]=null;capt.push({r:x,c:y})})}});if(!libs(group(r,c)).size&&!capt.length){board[r][c]=null;return false}historyMoves.push({col,r,c,capt});moveNo++;turn=opp;update();draw();return true}
-$('undo').onclick=()=>{if(snapshot||!historyMoves.length)return;let m=historyMoves.pop();if(m.pass){turn=m.col;moveNo--;update();return}board[m.r][m.c]=null;m.capt.forEach(p=>board[p.r][p.c]=m.col==='black'?'white':'black');turn=m.col;moveNo--;update();draw()};$('pass').onclick=()=>{if(snapshot)return;historyMoves.push({pass:true,col:turn});turn=turn==='black'?'white':'black';moveNo++;update()};$('reset').onclick=()=>{if(!confirm('盤面をリセットしますか？'))return;board=empty();turn='black';moveNo=0;historyMoves=[];exit();snapshot=false;live=null;update();draw()};
-function update(){$('turn').textContent=turn==='black'?'黒番':'白番';$('moves').textContent=moveNo+'手目';let b=board.flat().filter(x=>x==='black').length,w=board.flat().filter(x=>x==='white').length;$('state').textContent='黒 '+b+'石 / 白 '+w+'石。現在は'+(turn==='black'?'黒':'白')+'番です。';$('snapshot').classList.toggle('on',snapshot)}
-$('think').onclick=()=>{if(snapshot)returnToLive();thinking=true;my=[];ai=[];chosen=null;reaction=null;reason=null;show('p1');renderMy();draw()};$('cancel').onclick=exit;
-function renderMy(){$('myStatus').textContent=my.length?'自分の候補：'+my.map(p=>coord(p.r,p.c)).join(' / '):'候補手はまだありません。';$('myDone').disabled=!my.length}
-$('myDone').onclick=()=>{ai=makeAI();$('aiStatus').textContent='AI候補：'+ai.map(p=>coord(p.r,p.c)).join(' / ');renderPreferenceCandidates();$('aiList').innerHTML='';ai.forEach((p,i)=>{let b=document.createElement('button');b.textContent='AI-'+(i+1)+' '+coord(p.r,p.c);$('aiList').appendChild(b)});show('p2');draw()};$('aiDone').onclick=()=>{let all=[...my.map((p,i)=>({...p,label:'自分-'+(i+1)})),...ai.map((p,i)=>({...p,label:'AI-'+(i+1)}))];$('choiceList').innerHTML='';all.forEach(p=>{let b=document.createElement('button');b.textContent=p.label+' '+coord(p.r,p.c);b.onclick=()=>{document.querySelectorAll('#choiceList button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');chosen={r:p.r,c:p.c};$('choice').textContent='最終選択：'+coord(p.r,p.c);$('choiceDone').disabled=false;draw()};$('choiceList').appendChild(b)});show('p3');draw()};$('choiceDone').onclick=()=>show('p4');
-function bindGroup(id,setter){$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{$(id).querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');setter(b.dataset.v);checkSave()})}bindGroup('reaction',v=>reaction=v);bindGroup('reason',v=>reason=v);function checkSave(){$('save').disabled=!(chosen&&reaction&&reason)}
-$('save').onclick=()=>{let rec={id:Date.now(),createdAt:new Date().toISOString(),moveNumber:moveNo,position:{board:clone(board),turn,moveNumber:moveNo},myCandidates:my.map(p=>({r:p.r,c:p.c,coordinate:coord(p.r,p.c)})),aiCandidates:ai.map(p=>({r:p.r,c:p.c,coordinate:coord(p.r,p.c)})),selectedMove:{r:chosen.r,c:chosen.c,coordinate:coord(chosen.r,chosen.c)},selectionWeights:{preference:+$('prefWeight').value,strength:100-+$('prefWeight').value},engineAnalysis:kataAnalysis?{source:'KataGo',moveInfos:kataAnalysis}:null,aiReaction:reaction,reason,played:false,outcome:null,afterPosition:null};let a=load();a.push(rec);localStorage.setItem(KEY,JSON.stringify(a));renderHistory();updateProfile();if(confirm('判断を保存しました。選んだ手を実際の盤面に打ちますか？')){if(play(chosen.r,chosen.c,turn)){rec.played=true;rec.afterPosition={board:clone(board),turn,moveNumber:moveNo};localStorage.setItem(KEY,JSON.stringify(a));renderHistory();updateProfile();alert('選んだ手を打ちました。');}else alert('この手は現在の簡易ルールでは打てません。判断だけ保存しました。');}exit();draw()};
-function load(){try{let a=JSON.parse(localStorage.getItem(KEY)||'[]');if(a.length)return a;let old=JSON.parse(localStorage.getItem(OLDKEY)||'[]');if(old.length){a=old.map(r=>({...r,played:r.played||false,outcome:r.outcome||null,afterPosition:r.afterPosition||null}));localStorage.setItem(KEY,JSON.stringify(a));return a}return[]}catch{return[]}}
-function saveAll(a){localStorage.setItem(KEY,JSON.stringify(a))}
-function outcomeLabel(v){return v==='good'?'良かった':v==='ok'?'まあまあ':v==='bad'?'悪かった':'分からない'}
-function renderHistory(){let a=load();$('history').innerHTML=a.length?'':'まだ判断履歴はありません。';a.slice().reverse().forEach(r=>{let item=document.createElement('div');item.className='history-item';let b=document.createElement('button');b.innerHTML='<div class="history-main">'+r.selectedMove.coordinate+'　'+r.reason+'</div><div class="history-sub">'+r.moveNumber+'手目・'+(r.position.turn==='black'?'黒番':'白番')+' ｜ 自分：'+r.myCandidates.map(x=>x.coordinate).join(' / ')+' ｜ AI：'+r.aiCandidates.map(x=>x.coordinate).join(' / ')+' ｜ '+r.aiReaction+'<br>'+new Date(r.createdAt).toLocaleString('ja-JP')+(r.played?' ｜ 実戦で着手':'')+(r.outcome?' ｜ 結果：'+outcomeLabel(r.outcome):'')+'</div>';
-b.onclick=()=>restore(r);item.appendChild(b);if(r.played&&!r.outcome){let g=document.createElement('div');g.className='grid';['good','ok','bad','unknown'].forEach(v=>{let x=document.createElement('button');x.textContent=outcomeLabel(v);x.onclick=()=>{let aa=load(),z=aa.find(q=>q.id===r.id);if(z){z.outcome=v;saveAll(aa);renderHistory();updateProfile()}};g.appendChild(x)});item.appendChild(g)}$('history').appendChild(item)})}
-function updateProfile(){let a=load();if(!a.length){$('profile').textContent='まだ十分な判断データがありません。';return}let rc={},rs={},oc={};a.forEach(r=>{rc[r.aiReaction]=(rc[r.aiReaction]||0)+1;rs[r.reason]=(rs[r.reason]||0)+1;if(r.outcome)oc[r.outcome]=(oc[r.outcome]||0)+1});let top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1])[0];let tr=top(rs),tc=top(rc),to=top(oc);$('profile').innerHTML='判断 '+a.length+'件。<br>理由の傾向：<b>'+(tr?tr[0]+'（'+tr[1]+'件）':'—')+'</b><br>AI候補への反応：<b>'+(tc?tc[0]+'（'+tc[1]+'件）':'—')+'</b><br>実戦後の評価：<b>'+(to?outcomeLabel(to[0])+'（'+to[1]+'件）':'まだ評価なし')+'</b><br><span class="small">※これは現段階では学習モデルではなく、判断履歴から傾向を集計しています。</span>';let m=trainModel();$('model').innerHTML='学習に使った判断：<b>'+m.n+'件</b>。<br>過去のあなたの選択から、候補手の順位付けを更新します。<br><span class="small">※簡易モデル。勝率・棋力を表すものではありません。</span>'}
-
-function reasonVector(reason){const map={"攻めたい":[1,0,0,0,1,0,0,0],"地を取りたい":[0,1,0,1,0,0,0,0],"厚みを活かしたい":[0,0,1,0,0,1,0,0],"相手の弱点を突きたい":[1,0,0,0,0,0,1,0],"自分を安定させたい":[0,0,0,0,0,0,0,1],"大きそうだから":[0,1,0,1,0,0,0,0],"戦いを起こしたい":[1,0,0,0,1,0,1,0],"直感":[0,0,0,0,0,0,0,0],"その他":[0,0,0,0,0,0,0,0]};return map[reason]||map["その他"]}
-function preferenceAxes(){const a=load(),names=['攻め','地','厚み','大場','戦い','安定','弱点','直感'];let scores=Array(names.length).fill(0),counts=0;for(const r of a){if(!r.reason)continue;const v=reasonVector(r.reason);v.forEach((x,i)=>scores[i]+=x);counts++}if(!counts)return names.map((name,i)=>({name,score:0,count:0}));return names.map((name,i)=>({name,score:scores[i]/counts,count:scores[i]})).sort((x,y)=>y.score-x.score)}
-function renderPreferenceProfile(){const a=load(),axes=preferenceAxes(),el=$('preferenceProfile');if(!el)return;if(!a.length){el.textContent='まだ判断データがありません。まずは10件程度ためると傾向が見え始めます。';return}const top=axes.filter(x=>x.score>0).slice(0,4);el.innerHTML='<b>現在の推定：</b>'+ (top.length?top.map(x=>x.name+' '+Math.round(x.score*100)+'%').join(' ／ '):'まだ特徴を推定できません')+'<br><span class="small">判断 '+a.length+'件。これは棋力評価ではなく、選択理由から見た「判断の重心」です。</span>';const cor=$('preferenceCorrection');cor.innerHTML='<div class="small">AIの推定が違うと感じたら、重視したい軸を選び直せます（次回の判断で学習材料になります）。</div><div class="grid">'+['攻め','地','厚み','大場','戦い','安定','弱点','直感'].map(x=>'<button data-axis="'+x+'">'+x+'</button>').join('')+'</div>';cor.querySelectorAll('button').forEach(b=>b.onclick=()=>{const CK='igo-ai-model-corrections-v10';let arr=[];try{arr=JSON.parse(localStorage.getItem(CK)||'[]')}catch(e){};arr.push({id:Date.now(),createdAt:new Date().toISOString(),axis:b.dataset.axis,position:{board:clone(board),turn,moveNumber:moveNo}});localStorage.setItem(CK,JSON.stringify(arr));renderPreferenceProfile();updateProfile();alert('「'+b.dataset.axis+'」をモデル修正として記録しました。')})}
-function restore(r){if(!r.position||!r.position.board){alert('この履歴には局面データがありません。');return}if(!snapshot){live={board:clone(board),turn,moveNo,historyMoves:JSON.parse(JSON.stringify(historyMoves))}}exit();snapshot=true;board=clone(r.position.board);turn=r.position.turn;moveNo=r.position.moveNumber;$('snapshot').textContent='履歴の局面を表示中：'+r.moveNumber+'手目・選択 '+r.selectedMove.coordinate+'・理由 '+r.reason;update();draw();scrollTo({top:0,behavior:'smooth'})}
-function returnToLive(){if(!snapshot||!live)return;board=clone(live.board);turn=live.turn;moveNo=live.moveNo;historyMoves=JSON.parse(JSON.stringify(live.historyMoves));snapshot=false;live=null;update();draw()}
-function exit(){thinking=false;my=[];ai=[];chosen=null;reaction=null;reason=null;['p1','p2','p3','p4'].forEach(id=>$(id).classList.remove('on'));document.querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));$('save').disabled=true;draw()};function show(id){['p1','p2','p3','p4'].forEach(x=>$(x).classList.toggle('on',x===id));$(id).scrollIntoView({behavior:'smooth',block:'start'})}
-$('clear').onclick=()=>{if(load().length&&confirm('判断履歴をすべて削除しますか？')){localStorage.removeItem(KEY);localStorage.removeItem(OLDKEY);renderHistory();updateProfile()}};addEventListener('resize',draw);renderHistory();updateProfile();renderPreferenceProfile();update();draw();
-const FEATURE_NAMES=['center','ownNear','oppNear','corner','edge','openSpace'];
-function candidateFeatures(b,r,c,col){let own=0,opp=0,empty=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){if(!dr&&!dc)continue;let a=r+dr,d=c+dc;if(a<0||a>=N||d<0||d>=N)continue;let v=b[a][d];if(v===col)own++;else if(v)v==='black'&&col==='white'||v==='white'&&col==='black'?opp++:0;else empty++}let edge=(r===0||r===18||c===0||c===18)?1:0,corner=((r===0||r===18)&&(c===0||c===18))?1:0;return [1,Math.max(0,1-Math.hypot(r-9,c-9)/13),own/8,opp/8,corner,edge,empty/16]}
-function trainModel(){let a=load(),w=[0,0,0,0,0,0,0],n=0;for(let epoch=0;epoch<30;epoch++){for(const rec of a){if(!rec.position?.board||!rec.selectedMove)continue;let col=rec.position.turn==='black'?'black':'white';let cand=[...(rec.myCandidates||[]),...(rec.aiCandidates||[])];let uniq=[];for(const p of cand)if(!uniq.some(q=>q.r===p.r&&q.c===p.c))uniq.push(p);if(uniq.length<2)continue;let chosen=rec.selectedMove;let cf=candidateFeatures(rec.position.board,chosen.r,chosen.c,col);let scores=uniq.map(p=>{let f=candidateFeatures(rec.position.board,p.r,p.c,col);return f.reduce((z,x,i)=>z+w[i]*x,0)});let ex=scores.map(x=>Math.exp(Math.max(-20,Math.min(20,x-Math.max(...scores)))));let sum=ex.reduce((a,b)=>a+b,0)||1;for(let i=0;i<uniq.length;i++){let p=uniq[i],y=(p.r===chosen.r&&p.c===chosen.c)?1:0,pr=ex[i]/sum,f=candidateFeatures(rec.position.board,p.r,p.c,col);for(let j=0;j<w.length;j++)w[j]+=0.08*(y-pr)*f[j]}n++}}return{w,n}}
-function prefScore(b,p,col,model){let f=candidateFeatures(b,p.r,p.c,col);return f.reduce((z,x,i)=>z+model.w[i]*x,0)}
-function strengthScore(b,p,col){let own=0,opp=0,libs=0,empty=0;for(const [a,d] of neigh(p.r,p.c)){let v=b[a][d];if(v===col)own++;else if(v)opp++;else empty++;}for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){let a=p.r+dr,d=p.c+dc;if(a<0||a>=N||d<0||d>=N)continue;if(b[a][d]===col)own++;else if(b[a][d])opp++;else empty++;}let center=1-Math.hypot(p.r-9,p.c-9)/13;return 0.9*opp+0.55*own+0.25*empty+0.7*center+(p.r===0||p.r===18||p.c===0||p.c===18?0.15:0);}
-function kataMetricFor(p){if(!kataAnalysis)return null;const q=kataAnalysis.find(x=>{const k=kataCoordToPoint(x.move);return k&&k.r===p.r&&k.c===p.c});if(!q)return null;let raw;if(typeof q.utility==='number')raw=q.utility;else if(typeof q.winrate==='number')raw=q.winrate;else if(typeof q.scoreLead==='number')raw=q.scoreLead;else return null;return {raw,visits:q.visits||0,winrate:q.winrate,scoreLead:q.scoreLead,utility:q.utility,order:q.order}}
-function renderPreferenceCandidates(){let model=trainModel(),all=[...my.map((p,i)=>({...p,label:'自分-'+(i+1),source:'自分'})),...ai.map((p,i)=>({...p,label:(p.source==='KataGo'?'KataGo-':'AI-')+(i+1),source:p.source||'AI'}))];let scored=all.map(p=>{const km=kataMetricFor(p);return {...p,pref:prefScore(board,p,turn,model),strength:km?km.raw:strengthScore(board,p,turn),kata:km}});let norm=k=>{let vals=scored.map(x=>x[k]),mi=Math.min(...vals),ma=Math.max(...vals);return x=>ma===mi?0.5:(x-mi)/(ma-mi)};let ns=norm('strength'),np=norm('pref');let w=+$('prefWeight').value/100;scored.forEach(p=>{p.strengthN=ns(p.strength);p.prefN=np(p.pref);p.total=(1-w)*p.strengthN+w*p.prefN});scored.sort((a,b)=>b.total-a.total);let engineName=kataAnalysis?'KataGoの評価を使用中':'簡易評価を使用中';$('prefList').innerHTML='<b>総合ランキング</b><div class="small" style="margin-top:5px">'+engineName+'。強さと「あなた向き度」を分離して合成します。</div>'+scored.slice(0,5).map((p,i)=>{let k=p.kata?'KataGo順位 '+((p.kata.order??0)+1)+'・visits '+p.kata.visits:'簡易評価';let wr=typeof p.kata?.winrate==='number'?'・勝率 '+(p.kata.winrate*100).toFixed(1)+'%':'';return (i+1)+'. <b>'+p.label+' '+coord(p.r,p.c)+'</b>　総合 '+(p.total*100).toFixed(0)+'<br><span class="small">　盤面 '+(p.strengthN*100).toFixed(0)+' ／ あなた向き '+(p.prefN*100).toFixed(0)+'　'+k+wr+'</span>'}).join('<br>');$('model').innerHTML='学習に使った判断：<b>'+model.n+'件</b>。<br>「あなた向き度」と囲碁AI側の評価を別々に計算しています。'+(kataAnalysis?'<br><b>KataGoの解析結果を総合ランキングに反映しています。</b>':'<br><span class="small">まだKataGo結果がないため、盤面側は簡易評価です。</span>');draw()}
-$('prefWeight').addEventListener('input',()=>{let v=+$('prefWeight').value;$('weightText').textContent='あなた向き '+v+'% ／ 盤面上の有力度 '+(100-v)+'%';if(ai.length)renderPreferenceCandidates()});
-function makeAI(){let pts=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++)if(!board[r][c]){let s=0;for(let dr=-2;dr<=2;dr++)for(let dc=-2;dc<=2;dc++){let a=r+dr,b=c+dc;if(a>=0&&a<N&&b>=0&&b<N&&board[a][b])s+=(board[a][b]===turn?2:3)}s+=(9-Math.abs(9-r))*.25+(9-Math.abs(9-c))*.25;s+=Math.random();pts.push({r,c,s})}pts.sort((a,b)=>b.s-a.s);let out=[];for(const p of pts){if(out.every(q=>Math.max(Math.abs(q.r-p.r),Math.abs(q.c-p.c))>=2)){out.push(p);if(out.length===5)break}}return out}
-
-// v0.8 KataGo Analysis Engine adapter
-const ENGINE_KEY='igo-ai-engine-v09';
-let kataAnalysis=null;
-function boardToKataStones(){const out=[];for(let r=0;r<N;r++)for(let c=0;c<N;c++)if(board[r][c])out.push([board[r][c]==='black'?'B':'W',coord(r,c)]);return out}
-function makeKataQuery(){const q={id:'igo-ai-'+Date.now(),initialStones:boardToKataStones(),moves:[],rules:'japanese',komi:6.5,boardXSize:19,boardYSize:19,analyzeTurns:[0],maxVisits:200};$('kataJson').value=JSON.stringify(q,null,2);$('engineResult').innerHTML='KataGo Analysis Engine向けの問い合わせを作成しました。<br><span class="small">このJSONをKataGo側へ渡し、返ってきたJSONを下の欄へ貼り付けます。</span>'}
-function applyKataResponse(){try{const data=JSON.parse($('kataJson').value);const infos=data.moveInfos||[];if(!infos.length)throw new Error('moveInfos がありません');kataAnalysis=infos.slice();const top=infos.slice().sort((a,b)=>(b.visits||0)-(a.visits||0)).slice(0,8);ai=top.map(x=>{let p=kataCoordToPoint(x.move);return p?{...p,source:'KataGo',visits:x.visits||0,winrate:x.winrate,scoreLead:x.scoreLead,utility:x.utility,order:x.order}:null}).filter(Boolean);$('engineResult').innerHTML='<b>KataGo結果を読み込みました。</b><br>'+ai.map((p,i)=>(i+1)+'. '+coord(p.r,p.c)+'　KataGo順位 '+((p.order??i)+1)+'　visits '+p.visits+'　勝率 '+(typeof p.winrate==='number'?(p.winrate*100).toFixed(1)+'%':'—')).join('<br>')+'<br><span class="small">次に「あなた向きランキング」で、KataGo評価と過去のあなたの選択履歴を合成します。</span>';if(ai.length){thinking=true;renderPreferenceCandidates();draw()}localStorage.setItem(ENGINE_KEY,JSON.stringify(data))}catch(e){$('engineResult').textContent='JSONを読み込めません：'+e.message}}
-function kataCoordToPoint(v){if(!v||v==='pass')return null;const letters='ABCDEFGHJKLMNOPQRST';const c=letters.indexOf(v[0]),r=N-parseInt(v.slice(1),10);return c>=0&&r>=0&&r<N?{r,c}:null}
-$('makeKataQuery').onclick=makeKataQuery;$('loadKataResponse').onclick=applyKataResponse;
-</script>
-<script>
-(function(){
-  const b=document.getElementById('engineInfoBtn');
-  const i=document.getElementById('engineInfo');
-  if(b&&i)b.onclick=()=>{i.style.display=i.style.display==='none'?'block':'none'};
-})();
-</script>
-</body></html>
+</body>
+</html
