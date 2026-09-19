@@ -1,0 +1,715 @@
+<!--
+================================================================================
+  このアプリについて
+  大石道場 予定 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  大石道場の「合宿」「大石道場杯」の開催予定と、それぞれへの参加表明を
+  事前にまとめて管理するアプリ。tournament.html（大石道場杯）・gasshuku.html
+  （合宿）は「開催が決まってから」の結果記録が中心なので、その手前の
+  「これから開催する予定＋誰が来るか」を扱う場所として独立させている。
+
+【対応イベント種別（現時点）】
+  - 🏕️ 合宿
+  - 🏆 大石道場杯
+
+【参加者名簿】
+  tournament.html/gasshuku.htmlの名簿（成績のIDと紐づく専用名簿）とは
+  別に、このアプリ専用の簡易名簿を持つ（名前のみ・IDなし。ashiato.htmlの
+  メンバー管理と同じ考え方）。予定・参加表明という性質上、成績管理ほどの
+  厳密さは不要と判断し、シンプルさを優先した。
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 yotei.html で完結）
+  - Firebase Realtime Database によるリアルタイム同期
+    （igo.html/mahjong.html/tournament.html/gasshuku.htmlと同じプロジェクトを使用）
+
+【セキュリティ】
+  - 合言葉認証あり（他アプリと共通の合言葉）
+  - 認証情報はブラウザのlocalStorageに保存される
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（firebase-app-compat.js 10.12.0系）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ（大石道場杯・合宿・足あとの
+    UIパターンを積極的に流用する）
+  ・新しい技術より、長く使い続けられる構成を優先する
+  ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
+
+【主な機能（現時点）】
+  - 予定一覧（📅予定タブ）
+      開催日順に一覧表示。今日以降は近い順、今日より前は「過去の予定」として
+      新しい順に別セクション表示。カードに種別バッジ・開催日（範囲）・メモ・
+      参加表明の人数サマリ（⚪️〇人／△〇人／✕〇人）を表示
+      種別フィルター（すべて／🏕️合宿／🏆大石道場杯）で絞り込み表示可能
+      （両方見たい人・大石道場杯だけ見たい人など、見る人によって
+      関心のあるイベント種別が違うことを想定）
+  - 予定の作成・編集・削除（種別＝合宿／大石道場杯、開始日、終了日（任意）、
+    メモ（任意）を入力）
+  - 参加表明（予定カードを開くと、専用名簿からピル型ボタンで参加者を追加でき、
+    追加した人ごとに ⚪️参加／△未定／✕不参加 の3段階と、任意の一言メモを
+    記録できる。参加者一覧から丸ごと削除するボタンも別途あり）
+  - 対局者名簿（⚙️設定タブ→管理者の仕事内。名前のみのシンプルな管理。
+    tournament/gasshukuの名簿とは別管理）
+  - 公開閲覧モード（URLに ?public=1 を付けてアクセスすると、大石道場杯の予定だけを
+    閲覧専用で表示する。編集ボタン・参加者の個別編集・⚙️設定タブは出さず、
+    種別フィルターも「大石道場杯」に固定される。内輪メンバー＝両方見える通常URL、
+    外部・セモオープンな人＝大石道場杯だけ見える?public=1付きURL、という
+    使い分けを想定。※合言葉認証を外すかどうかはまだ保留中で、現時点では
+    ?public=1でアクセスしても通常どおり合言葉が必要）
+  - Firebase によるリアルタイム同期
+  - データエクスポート（設定タブからJSONファイルとしてダウンロード）
+
+【今後の改良候補】
+  - 【保留中】公開閲覧モード（?public=1）の認証方針。合言葉なしにするか、
+    別の合言葉を用意するか、今のまま共通の合言葉でよいかが未決定
+  - 参加表明が確定した予定を、そのままtournament.html/gasshuku.htmlの
+    対局者選択に引き継ぐ連携（現状は手動で転記する必要がある）
+  - リマインダー的な通知（現状は開いて見に来る前提）
+  - イベント種別の追加（合宿・大石道場杯以外）
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大石道場 予定</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", YuGothic, sans-serif;
+    background: #fcfaf2; color: #333;
+  }
+  #app { max-width: 500px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  #header { background: #2c3e50; color: #fff; padding: 14px 16px 10px; text-align: center; position: sticky; top: 0; z-index: 101; }
+  #header h1 { font-size: 1.1rem; letter-spacing: 2px; font-weight: bold; }
+  #sync-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 5px; }
+  #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; }
+  #sync-label { font-size: 0.7rem; color: #aed6f1; }
+
+  #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; position: sticky; top: 0; z-index: 100; }
+  .tab-btn {
+    flex: 1; padding: 11px 4px; border: none; background: none;
+    font-size: 0.85rem; font-weight: bold; color: #777; cursor: pointer;
+    border-bottom: 3px solid transparent;
+  }
+  .tab-btn.active { color: #2c3e50; background: #fff; border-bottom-color: #b89752; }
+
+  #content { padding: 18px 16px; flex: 1; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  h3 { border-left: 4px solid #b89752; padding-left: 8px; margin-bottom: 12px; color: #2c3e50; font-size: 1rem; }
+  h4.section-head { border-left: 4px solid #b89752; padding-left: 8px; color: #2c3e50; margin: 20px 0 10px; font-size: 0.92rem; }
+  .note { font-size: 0.8rem; color: #888; margin: -6px 0 14px; line-height: 1.5; }
+
+  .fg { margin-bottom: 12px; }
+  label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 0.86rem; color: #444; }
+  input, textarea {
+    width: 100%; padding: 10px; border: 1px solid #ddd8cc;
+    border-radius: 6px; font-size: 1rem; background: #fff; font-family: inherit;
+  }
+  textarea { resize: vertical; }
+  .btn {
+    width: 100%; padding: 12px; background: #2c3e50; color: #fff;
+    border: none; border-radius: 6px; font-size: 0.95rem;
+    font-weight: bold; cursor: pointer; letter-spacing: 1px; margin-top: 4px;
+  }
+  .btn:active { opacity: 0.85; }
+  .btn-cancel { background: #f0ede4; color: #555; }
+
+  .type-select-row { display: flex; gap: 8px; }
+  .type-select-btn {
+    flex: 1; padding: 10px; border: 1px solid #ddd8cc; border-radius: 8px;
+    background: #fff; font-size: 0.88rem; font-weight: bold; color: #777; cursor: pointer;
+  }
+  .type-select-btn.active.type-gasshuku { background: #eaf4ea; border-color: #2e7d5e; color: #2e7d5e; }
+  .type-select-btn.active.type-tournament { background: #fdf8ee; border-color: #b89752; color: #b89752; }
+
+  .form-box {
+    background: #fff; border: 1px solid #e0dbcd; border-radius: 10px;
+    padding: 14px; margin-bottom: 16px; display: none;
+  }
+  .form-box.open { display: block; }
+
+  #setup-banner {
+    background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+    padding: 14px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 0.85rem; line-height: 1.7; display: none;
+  }
+
+  .type-filter-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  .type-filter-btn {
+    flex: 1; padding: 8px 4px; border: 1px solid #ddd8cc; border-radius: 16px;
+    background: #fff; font-size: 0.8rem; font-weight: bold; color: #777; cursor: pointer;
+  }
+  .type-filter-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+  .type-filter-btn.active.type-gasshuku { background: #2e7d5e; border-color: #2e7d5e; }
+  .type-filter-btn.active.type-tournament { background: #b89752; border-color: #b89752; }
+
+  .event-card { background: #fff; border: 1px solid #e0dbcd; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  .event-badge {
+    display: inline-block; font-size: 0.72rem; font-weight: bold; padding: 2px 9px;
+    border-radius: 10px; margin-bottom: 6px;
+  }
+  .event-badge.type-gasshuku { background: #eaf4ea; color: #2e7d5e; }
+  .event-badge.type-tournament { background: #fdf8ee; color: #b89752; }
+  .event-date { font-size: 0.98rem; font-weight: bold; color: #2c3e50; }
+  .event-memo { font-size: 0.82rem; color: #666; margin-top: 6px; line-height: 1.6; white-space: pre-wrap; }
+  .event-summary { font-size: 0.8rem; color: #777; margin-top: 8px; }
+  .event-btn-row { display: flex; gap: 6px; margin-top: 10px; }
+  .event-btn-row button {
+    flex: 1; padding: 7px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: inherit;
+  }
+  .event-toggle-btn { background: #f1f0ea; border: 1px solid #ddd8cc; color: #2c3e50; }
+  .event-edit-btn { background: #fff; border: 1px solid #ddd8cc; color: #555; }
+  .event-del-btn { background: #fdf1ef; border: 1px solid #e0b3ac; color: #b03a2e; }
+
+  .participant-panel { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ddd8cc; display: none; }
+  .participant-panel.open { display: block; }
+  .add-participant-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .add-participant-btn {
+    background: #f0ede4; border: 1px solid #ddd; border-radius: 20px;
+    padding: 5px 12px; font-size: 0.8rem; cursor: pointer; font-family: inherit; color: #555;
+  }
+  .participant-row {
+    display: flex; align-items: center; gap: 6px; background: #faf9f4;
+    border: 1px solid #eee7d8; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px;
+  }
+  .participant-name { width: 64px; flex-shrink: 0; font-size: 0.84rem; font-weight: bold; color: #2c3e50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-btns { display: flex; gap: 3px; flex-shrink: 0; }
+  .status-btn {
+    width: 30px; height: 28px; border: 1px solid #ddd8cc; border-radius: 5px;
+    background: #fff; font-size: 0.82rem; cursor: pointer; color: #999;
+  }
+  .status-btn.active.st-yes { background: #2e7d5e; border-color: #2e7d5e; color: #fff; }
+  .status-btn.active.st-maybe { background: #e0a300; border-color: #e0a300; color: #fff; }
+  .status-btn.active.st-no { background: #b03a2e; border-color: #b03a2e; color: #fff; }
+  .participant-note {
+    flex: 1; min-width: 0; border: 1px solid #ddd8cc; border-radius: 5px;
+    padding: 5px 6px; font-size: 0.78rem;
+  }
+  .participant-remove-btn {
+    width: 26px; height: 26px; flex-shrink: 0; border: none; border-radius: 5px;
+    background: #f0ede4; color: #999; font-size: 0.8rem; cursor: pointer;
+  }
+  .participant-remove-btn:active { background: #e74c3c; color: #fff; }
+
+  .roster-item { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #ddd8cc; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+  .roster-item input { flex: 1; padding: 8px; }
+  .roster-del-btn { width: 30px; height: 30px; flex-shrink: 0; border: none; border-radius: 6px; background: #f0ede4; color: #999; font-size: 0.9rem; cursor: pointer; }
+  .roster-del-btn:active { background: #e74c3c; color: #fff; }
+
+  #admin-toggle { cursor: pointer; padding: 12px 0; display: flex; align-items: center; gap: 8px; color: #2c3e50; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #e0dbcd; }
+
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #2c3e50; color: #fff; padding: 10px 18px; border-radius: 20px;
+    font-size: 0.88rem; z-index: 999; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+</style>
+</head>
+<body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
+<div id="app">
+
+  <div id="header">
+    <h1>📅 大石道場 予定</h1>
+    <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
+  </div>
+
+  <div id="nav">
+    <button class="tab-btn active" data-tab="events">📅予定</button>
+    <button class="tab-btn" id="tab-setup" data-tab="setup">⚙️設定</button>
+  </div>
+
+  <div id="content">
+
+    <div class="panel active" id="panel-events">
+      <div id="setup-banner">
+        ⚙️ <strong>Firebase未設定 — ローカル動作中</strong><br>
+        全員でリアルタイム共有するには <code>firebaseConfig</code> を設定してください。
+      </div>
+
+      <button class="btn" id="add-event-btn">＋ 予定を追加</button>
+
+      <div class="form-box" id="event-form">
+        <div class="fg">
+          <label>種別</label>
+          <div class="type-select-row">
+            <button type="button" class="type-select-btn type-gasshuku" data-type="gasshuku">🏕️ 合宿</button>
+            <button type="button" class="type-select-btn type-tournament" data-type="tournament">🏆 大石道場杯</button>
+          </div>
+        </div>
+        <div class="fg"><label>開始日</label><input id="ev-start" type="date"></div>
+        <div class="fg"><label>終了日（1日開催なら空欄でOK）</label><input id="ev-end" type="date"></div>
+        <div class="fg"><label>メモ（任意）</label><textarea id="ev-memo" rows="2" placeholder="場所や持ち物など"></textarea></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="ev-submit">登録する</button>
+          <button class="btn btn-cancel" id="ev-cancel">キャンセル</button>
+        </div>
+      </div>
+
+      <div class="type-filter-row" id="type-filter-row">
+        <button type="button" class="type-filter-btn active" data-filter="all">すべて</button>
+        <button type="button" class="type-filter-btn type-gasshuku" data-filter="gasshuku">🏕️ 合宿</button>
+        <button type="button" class="type-filter-btn type-tournament" data-filter="tournament">🏆 大石道場杯</button>
+      </div>
+
+      <h4 class="section-head" style="margin-top:0" id="upcoming-head">🔜 予定</h4>
+      <div id="upcoming-list"></div>
+
+      <div id="past-section" style="display:none">
+        <h4 class="section-head">📖 過去の予定</h4>
+        <div id="past-list"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-setup">
+      <div id="admin-toggle">
+        <span id="admin-arrow">▶</span>
+        <span>管理者の仕事</span>
+      </div>
+      <div id="admin-body" style="display:none;margin-top:16px">
+        <h3>参加者名簿</h3>
+        <p class="note">合宿・大石道場杯どちらの予定にも参加しうる人をあらかじめ登録しておきます（名前のみ）。</p>
+        <div id="roster-list"></div>
+        <div class="fg" style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
+          <div style="flex:1"><label>名前</label><input id="roster-new-name" type="text" placeholder="名前"></div>
+          <button class="btn" id="roster-add-btn" style="width:auto;padding:10px 16px;margin:0;flex-shrink:0">追加</button>
+        </div>
+
+        <h3 style="margin-top:24px">データエクスポート</h3>
+        <p class="note">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
+        <button class="btn" id="export-btn" style="background:#2c3e50">JSONでダウンロード</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+  authDomain:        "hiking-558a9.firebaseapp.com",
+  databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+  projectId:         "hiking-558a9",
+  storageBucket:     "hiking-558a9.firebasestorage.app",
+  messagingSenderId: "1066293850319",
+  appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+};
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+// 外部・セモオープンな人向けの閲覧専用モード（?public=1）。
+// 大石道場杯の予定だけを、編集・参加者管理なしで表示する。
+// ※ 認証（合言葉）を外すかどうかは保留中。現時点では通常どおり合言葉必須のまま。
+const isPublicView = new URLSearchParams(location.search).get("public") === "1";
+
+const TYPE_INFO = {
+  gasshuku:   { label: "🏕️ 合宿" },
+  tournament: { label: "🏆 大石道場杯" }
+};
+const STATUS_INFO = {
+  yes:   { icon: "⚪", cls: "st-yes" },
+  maybe: { icon: "△", cls: "st-maybe" },
+  no:    { icon: "✕", cls: "st-no" }
+};
+
+let members = [];   // ["名前1","名前2",...]
+let events  = {};   // { [key]: { type, startDate, endDate, memo, participants: { name: {status, note} } } }
+let configRef = null, eventsRef = null;
+let editingSetup = false;
+let currentEventType = "gasshuku";
+let editingEventKey = null; // nullなら新規作成
+let openEventKeys = new Set(); // 参加者パネルを開いている予定のkey集合
+let currentTypeFilter = "all"; // "all" | "gasshuku" | "tournament"（予定一覧の種別絞り込み）
+
+// 公開閲覧モード（?public=1）の初期化：大石道場杯だけに固定し、編集系UIを隠す
+if (isPublicView) {
+  currentTypeFilter = "tournament";
+  document.getElementById("header").querySelector("h1").textContent = "🏆 大石道場杯 予定";
+  document.getElementById("nav").style.display = "none";
+  document.getElementById("add-event-btn").style.display = "none";
+  document.getElementById("type-filter-row").style.display = "none";
+}
+
+if (isConfigured) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    configRef = firebase.database().ref("yotei/config");
+    eventsRef = firebase.database().ref("yotei/events");
+    configRef.on("value", snap => {
+      const cfg = snap.val() || {};
+      members = Array.isArray(cfg.members) ? cfg.members : [];
+      renderRosterList();
+      renderEvents();
+      setSyncStatus(true);
+    }, () => setSyncStatus(false));
+    eventsRef.on("value", snap => {
+      events = snap.val() || {};
+      renderEvents();
+      setSyncStatus(true);
+    }, () => setSyncStatus(false));
+  } catch(e) {
+    console.error("Firebase init failed:", e);
+    setSyncStatus(false);
+  }
+} else {
+  document.getElementById("setup-banner").style.display = "block";
+  setSyncStatus(false);
+  renderRosterList();
+  renderEvents();
+}
+
+function setSyncStatus(online) {
+  const dot = document.getElementById("sync-dot");
+  const lbl = document.getElementById("sync-label");
+  if (!isConfigured) { dot.style.background = "#e67e22"; lbl.textContent = "ローカルモード（Firebase未設定）"; return; }
+  if (online) {
+    dot.style.background = "#2ecc71";
+    const now = new Date();
+    lbl.textContent = `リアルタイム同期中 · ${now.getHours()}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  } else { dot.style.background = "#e74c3c"; lbl.textContent = "オフライン"; }
+}
+function pad(n) { return String(n).padStart(2, "0"); }
+function escapeHtml(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---------- タブ ----------
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+document.querySelectorAll(".type-filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentTypeFilter = btn.dataset.filter;
+    document.querySelectorAll(".type-filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderEvents();
+  });
+});
+
+document.getElementById("admin-toggle").addEventListener("click", () => {
+  const body = document.getElementById("admin-body");
+  const arrow = document.getElementById("admin-arrow");
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "";
+  arrow.textContent = isOpen ? "▶" : "▼";
+});
+
+// ---------- 日付表示 ----------
+function formatSingleDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${y}/${parseInt(m)}/${parseInt(d)}`;
+}
+function formatDateRange(start, end) {
+  if (!start) return "開催日未設定";
+  if (!end || end === start) return formatSingleDate(start);
+  return `${formatSingleDate(start)}〜${formatSingleDate(end)}`;
+}
+function todayIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+}
+
+// ---------- 予定フォーム ----------
+const eventForm = document.getElementById("event-form");
+document.querySelectorAll(".type-select-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentEventType = btn.dataset.type;
+    document.querySelectorAll(".type-select-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  });
+});
+
+document.getElementById("add-event-btn").addEventListener("click", () => {
+  editingEventKey = null;
+  currentEventType = "gasshuku";
+  document.querySelectorAll(".type-select-btn").forEach(b => b.classList.toggle("active", b.dataset.type === "gasshuku"));
+  document.getElementById("ev-start").value = "";
+  document.getElementById("ev-end").value = "";
+  document.getElementById("ev-memo").value = "";
+  eventForm.classList.add("open");
+  editingSetup = true;
+  document.getElementById("ev-start").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+
+document.getElementById("ev-cancel").addEventListener("click", () => {
+  eventForm.classList.remove("open");
+  editingSetup = false;
+  editingEventKey = null;
+});
+
+document.getElementById("ev-submit").addEventListener("click", () => {
+  const startDate = document.getElementById("ev-start").value;
+  const endDate = document.getElementById("ev-end").value;
+  const memo = document.getElementById("ev-memo").value.trim();
+  if (!startDate) { showToast("開始日を入力してください"); return; }
+  if (endDate && endDate < startDate) { showToast("終了日は開始日より後にしてください"); return; }
+
+  if (editingEventKey) {
+    const existing = events[editingEventKey] || {};
+    eventsRef && eventsRef.child(editingEventKey).update({
+      type: currentEventType, startDate, endDate: endDate || null, memo: memo || null
+    });
+  } else {
+    eventsRef && eventsRef.push({
+      type: currentEventType, startDate, endDate: endDate || null, memo: memo || null, participants: {}
+    });
+  }
+  eventForm.classList.remove("open");
+  editingSetup = false;
+  editingEventKey = null;
+  showToast("予定を保存しました");
+});
+
+function openEditForm(key) {
+  const ev = events[key];
+  if (!ev) return;
+  editingEventKey = key;
+  currentEventType = ev.type;
+  document.querySelectorAll(".type-select-btn").forEach(b => b.classList.toggle("active", b.dataset.type === ev.type));
+  document.getElementById("ev-start").value = ev.startDate || "";
+  document.getElementById("ev-end").value = ev.endDate || "";
+  document.getElementById("ev-memo").value = ev.memo || "";
+  eventForm.classList.add("open");
+  editingSetup = true;
+  eventForm.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function deleteEvent(key) {
+  if (!confirm("この予定を削除しますか？（参加表明も含めて消えます）")) return;
+  eventsRef && eventsRef.child(key).remove();
+  showToast("削除しました");
+}
+
+// ---------- 予定一覧 ----------
+function participantSummary(participants) {
+  const counts = { yes: 0, maybe: 0, no: 0 };
+  Object.values(participants || {}).forEach(p => { if (counts[p.status] !== undefined) counts[p.status]++; });
+  const total = counts.yes + counts.maybe + counts.no;
+  if (total === 0) return "まだ参加表明がありません";
+  return `⚪${counts.yes}　△${counts.maybe}　✕${counts.no}`;
+}
+
+function eventCardHTML(key, ev) {
+  const info = TYPE_INFO[ev.type] || { label: ev.type };
+  const isOpen = openEventKeys.has(key);
+  const summaryLine = `<div class="event-summary">${participantSummary(ev.participants)}</div>`;
+
+  if (isPublicView) {
+    // 外部・セモオープンな人向け：閲覧専用。編集ボタン・参加者の個別編集は出さない。
+    return `
+    <div class="event-card" data-key="${key}">
+      <span class="event-badge type-${ev.type}">${info.label}</span>
+      <div class="event-date">${escapeHtml(formatDateRange(ev.startDate, ev.endDate))}</div>
+      ${ev.memo ? `<div class="event-memo">${escapeHtml(ev.memo)}</div>` : ""}
+      ${summaryLine}
+    </div>`;
+  }
+
+  return `
+    <div class="event-card" data-key="${key}">
+      <span class="event-badge type-${ev.type}">${info.label}</span>
+      <div class="event-date">${escapeHtml(formatDateRange(ev.startDate, ev.endDate))}</div>
+      ${ev.memo ? `<div class="event-memo">${escapeHtml(ev.memo)}</div>` : ""}
+      ${summaryLine}
+      <div class="event-btn-row">
+        <button class="event-toggle-btn" data-action="toggle" data-key="${key}">${isOpen ? "閉じる" : "参加者を見る・編集"}</button>
+        <button class="event-edit-btn" data-action="edit" data-key="${key}">修正</button>
+        <button class="event-del-btn" data-action="delete" data-key="${key}">削除</button>
+      </div>
+      <div class="participant-panel ${isOpen ? "open" : ""}" data-key="${key}">
+        ${participantPanelHTML(key, ev)}
+      </div>
+    </div>`;
+}
+
+function participantPanelHTML(key, ev) {
+  const participants = ev.participants || {};
+  const addable = members.filter(m => !participants[m]);
+  const addHTML = addable.length
+    ? `<div class="add-participant-list">${addable.map(m => `<button type="button" class="add-participant-btn" data-action="add-p" data-key="${key}" data-name="${escapeHtml(m)}">＋ ${escapeHtml(m)}</button>`).join("")}</div>`
+    : (members.length ? `<p class="note" style="margin:0 0 8px">全員すでに追加されています。</p>` : `<p class="note" style="margin:0 0 8px">⚙️設定タブで名簿に人を登録してください。</p>`);
+
+  const rows = Object.keys(participants).map(name => {
+    const p = participants[name];
+    const statusBtns = Object.keys(STATUS_INFO).map(st => {
+      const s = STATUS_INFO[st];
+      const active = p.status === st ? `active ${s.cls}` : "";
+      return `<button type="button" class="status-btn ${active}" data-action="status" data-key="${key}" data-name="${escapeHtml(name)}" data-status="${st}">${s.icon}</button>`;
+    }).join("");
+    return `
+      <div class="participant-row">
+        <div class="participant-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+        <div class="status-btns">${statusBtns}</div>
+        <input type="text" class="participant-note" data-action="note" data-key="${key}" data-name="${escapeHtml(name)}" value="${escapeHtml(p.note || "")}" placeholder="一言（任意）">
+        <button type="button" class="participant-remove-btn" data-action="remove-p" data-key="${key}" data-name="${escapeHtml(name)}" title="参加者から外す">✕</button>
+      </div>`;
+  }).join("");
+
+  return addHTML + (rows || `<p class="note" style="margin:0">まだ参加者が追加されていません。</p>`);
+}
+
+function renderEvents() {
+  const allKeys = Object.keys(events);
+  const keys = currentTypeFilter === "all" ? allKeys : allKeys.filter(k => events[k].type === currentTypeFilter);
+  const today = todayIso();
+  const upcoming = keys.filter(k => (events[k].startDate || "") >= today).sort((a,b) => (events[a].startDate||"").localeCompare(events[b].startDate||""));
+  const past = keys.filter(k => (events[k].startDate || "") < today).sort((a,b) => (events[b].startDate||"").localeCompare(events[a].startDate||""));
+
+  const emptyMsg = allKeys.length === 0
+    ? `予定はまだありません。「＋ 予定を追加」から登録してください。`
+    : `この種別の予定はありません。`;
+  document.getElementById("upcoming-list").innerHTML = upcoming.length
+    ? upcoming.map(k => eventCardHTML(k, events[k])).join("")
+    : `<p style="color:#999;font-size:0.88rem">${emptyMsg}</p>`;
+
+  document.getElementById("past-section").style.display = past.length ? "" : "none";
+  document.getElementById("past-list").innerHTML = past.map(k => eventCardHTML(k, events[k])).join("");
+
+  attachEventListEvents();
+}
+
+function attachEventListEvents() {
+  document.querySelectorAll('[data-action="toggle"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      if (openEventKeys.has(key)) openEventKeys.delete(key); else openEventKeys.add(key);
+      renderEvents();
+    });
+  });
+  document.querySelectorAll('[data-action="edit"]').forEach(btn => {
+    btn.addEventListener("click", () => openEditForm(btn.dataset.key));
+  });
+  document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+    btn.addEventListener("click", () => deleteEvent(btn.dataset.key));
+  });
+  document.querySelectorAll('[data-action="add-p"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { key, name } = btn.dataset;
+      eventsRef && eventsRef.child(key).child("participants").child(name).set({ status: "maybe", note: "" });
+      openEventKeys.add(key);
+    });
+  });
+  document.querySelectorAll('[data-action="remove-p"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { key, name } = btn.dataset;
+      eventsRef && eventsRef.child(key).child("participants").child(name).remove();
+      openEventKeys.add(key);
+    });
+  });
+  document.querySelectorAll('[data-action="status"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { key, name, status } = btn.dataset;
+      eventsRef && eventsRef.child(key).child("participants").child(name).child("status").set(status);
+      openEventKeys.add(key);
+    });
+  });
+  document.querySelectorAll('[data-action="note"]').forEach(input => {
+    input.addEventListener("change", () => {
+      const { key, name } = input.dataset;
+      eventsRef && eventsRef.child(key).child("participants").child(name).child("note").set(input.value.trim());
+      openEventKeys.add(key);
+    });
+  });
+}
+
+// ---------- 参加者名簿 ----------
+function renderRosterList() {
+  const el = document.getElementById("roster-list");
+  if (!el) return;
+  el.innerHTML = members.length
+    ? members.map(m => `
+        <div class="roster-item">
+          <input type="text" value="${escapeHtml(m)}" readonly>
+          <button type="button" class="roster-del-btn" data-name="${escapeHtml(m)}">✕</button>
+        </div>`).join("")
+    : `<p class="note" style="margin:0">まだ登録された人がいません。下のフォームから追加してください。</p>`;
+
+  el.querySelectorAll(".roster-del-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.name;
+      if (!confirm(`${name}を名簿から削除しますか？（既存の予定への参加表明には影響しません）`)) return;
+      members = members.filter(m => m !== name);
+      configRef && configRef.update({ members });
+      showToast(`${name}を削除しました`);
+    });
+  });
+}
+
+document.getElementById("roster-add-btn").addEventListener("click", () => {
+  const input = document.getElementById("roster-new-name");
+  const name = input.value.trim();
+  if (!name) { showToast("名前を入力してください"); return; }
+  if (members.includes(name)) { showToast("すでに登録されています"); return; }
+  members = [...members, name];
+  configRef && configRef.update({ members });
+  input.value = "";
+  showToast(`${name}を名簿に追加しました`);
+});
+
+// ---------- データエクスポート ----------
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (!isConfigured) { showToast("データベースに接続されていません"); return; }
+  firebase.database().ref("yotei").once("value", snap => {
+    const data = snap.val();
+    if (!data) { showToast("エクスポートするデータがありません"); return; }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `yotei_backup_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("エクスポートしました");
+  });
+});
+
+// ---------- トースト ----------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.style.display = "block";
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = "none", 2500);
+}
+</script>
+</body>
+</html>

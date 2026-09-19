@@ -1,0 +1,2215 @@
+<!--
+================================================================================
+  このアプリについて
+  大石道場合宿 — 設計思想と共同編集の進め方
+================================================================================
+
+【アプリの目的】
+  大石道場の合宿（1泊2日で行うことが多い）で、囲碁（スイス式）と麻雀（回ごとの
+  自由対局）の両方の結果を記録し、合宿ごとの総合順位・シーズン内順位・全期間の
+  通算順位を管理するアプリ。大石道場杯（tournament.html）とは別イベント・
+  別の対局者名簿として運用する。
+
+【対局形式】
+  ▼囲碁パート（スイス式）
+    参加人数（〜14人程度を想定）を見ながら、合宿設定時に西さんが回戦数を
+    手動で入力して確定する（以降その合宿中は固定。自動計算はしない）。
+    組み合わせは公式のスイス式（ダッチシステム）に準拠する：全員を成績（勝数）で
+    グループ分けし、各グループを「今回の合宿設定」で並べた順のまま上位半分・
+    下位半分に分けて、上位1位×下位1位、上位2位×下位2位…とクロスに組む
+    （1回戦は全員が同成績＝1グループなので、参加者全体を上位半分・下位半分に
+    分けて組むことになる）。グループの人数が奇数のときは、並び順で一番後ろの
+    1人を1段階成績の低いグループへ降格させて一緒に処理する（標準的な
+    フローティング）。クロスの相手が対戦済みの場合は、下位半分の中で相手を
+    前後にずらして再戦にならない組み合わせを探す（それでも見つからなければ
+    仕方なく再戦を許容する）。次回戦の組み合わせは、前回戦の全結果が揃うまで
+    生成されない。
+    不戦敗は基本なし（時間差で対局して結果を埋める運用）。全体人数が奇数の
+    ときは1人がbye（まだbyeを経験していない人を優先。勝敗に影響しない）。
+    最終順位の決定は「勝数 → 直接対決 → Buchholz（対戦相手の勝数合計）→
+    機械的な基準（登録順等）」の順でタイブレークする。
+
+  ▼麻雀パート（回ごとの自由対局記録）
+    4人打ちが基本単位だが、「2位・3位が抜けて次の人が入る」ような
+    入れ替わり・抜け番ありの遊び方を想定。半チャンごとにその場の4人を
+    選んで結果を記録する（既存の点棒＝mahjong.htmlの入力方式を踏襲）。
+    誰が何回打ったかに関わらず、対局pt＋チップ換算ptの総合ポイントで
+    合宿内の順位を出す。
+
+  ▼合宿の総合順位
+    囲碁順位・麻雀順位をそれぞれ固定配点表でポイント化し、囲碁・麻雀の
+    重み（管理者設定・デフォルト同値）を掛けて合算する。
+    配点表（1〜14位、キリの良い数字を優先）：
+      1位100 / 2位80 / 3位60 / 4位50 / 5位40 / 6位30 / 7位25 / 8位20 /
+      9位16 / 10位13 / 11位10 / 12位7 / 13位4 / 14位2
+    15位以下が出る場合の配点は未定（今後の課題）。
+
+  ▼シーズン
+    西さんが手動で区切る（igo.html/mahjong.htmlと同じ運用）。
+    重みの値はシーズンごとに保存され、過去シーズンの総合順位は当時の
+    重みのまま再計算される（後から重みを変えても過去の結果は変わらない）。
+    シーズン内の囲碁／麻雀／総合順位と、全期間の通算順位の両方を出す。
+
+【対局者名簿】
+  大石道場杯（tournament.html）とは別に、合宿専用の名簿を持つ
+  （tournament/roster とは別のFirebaseノードで管理）。
+
+【過去の合宿】
+  tournament.htmlの「📚過去の大会」タブと同じ3層構造を踏襲する：
+    一覧（直近6件＋もっと見る）→ 合宿ごとの詳細（囲碁・麻雀それぞれの結果、
+    読み取り専用）→ 全期間の通算成績（囲碁／麻雀／総合をそれぞれ集計）
+
+【利用環境】
+  - スマホ利用を最優先とする（モバイルファースト）
+  - GitHub Pages でホスティング（単一 gasshuku.html で完結）
+  - Firebase Realtime Database によるリアルタイム同期
+    （igo.html/mahjong.html/tournament.htmlと同じプロジェクトを使用）
+
+【セキュリティ】
+  - 合言葉認証あり（他アプリと共通の合言葉）
+  - 認証情報はブラウザのlocalStorageに保存される
+
+【技術構成】
+  - バニラJS（React・Babel 不使用）
+  - Firebase Realtime Database（tournament.html/igo.html/mahjong.htmlと
+    同じ firebase-app-compat.js 10.12.0 系を使用）
+  - 外部ライブラリなし・ビルド不要・1ファイル完結
+
+【共同編集の進め方】
+  このアプリは、ユーザーと生成AIが対話しながら少しずつ育てていくものです。
+  以下は、その共同作業をうまく続けるための共通認識です。
+
+  ・このアプリの文脈と歴史を理解した上で提案する
+  ・変更の意図と影響範囲を共有しながら進める
+  ・小さな積み重ねを大切にし、一度に大きく変えない
+  ・既存の操作感や雰囲気はできるだけ引き継ぐ（大石道場杯・星取・点棒の
+    UIパターンを積極的に流用する）
+  ・新しい技術より、長く使い続けられることを優先する
+  ・機能を追加・変更したら「主な機能」と「今後の改良候補」を合わせて更新する
+
+【主な機能（現時点）】
+  - タブ構成：⚫囲碁／🀄麻雀／🏅総合／📚過去の合宿／⚙️設定
+  - 対局者名簿（⚙️設定タブ→管理者の仕事内。名前・段位（任意）を登録・編集・削除できる。
+    大石道場杯の名簿とは別のFirebaseノードで独立管理。tournament.htmlの名簿UIを踏襲）
+  - 今回の合宿設定（開始日・終了日（1日開催なら終了日は空欄でOK）・参加者選択。
+    名簿からピル型ボタンで参加者を追加すると、「選んだ参加者」リストに移動する。
+    選んだ参加者は☰ハンドルの長押しドラッグで並び替え、✕ボタンで取り消し（＝選択
+    解除）できる。各参加者の行に「⚫囲碁」「🀄麻雀」トグルがあり、参加者に加えた
+    時点でデフォルト両方ON、片方だけの人はそこでOFFにする。人数は可変・14人目安。
+    囲碁の回戦数は自動計算をせず、参加人数を見ながら手動で入力する（目安として
+    4〜5回戦程度と案内するのみ）。「保存して全員に同期」で確定し、以降は編集の
+    都度、上書き確認を挟む）
+  - 囲碁（スイス式、実装済み）
+      対局者×回戦のマス目表（横スクロール）で全回戦を一覧表示。各マスに対戦相手と
+      勝敗（○/●）、未決着は「…」、回戦未生成は「－」、お休みの回は「お休み」を表示。
+      行の並びは「今回の合宿設定」で決めた参加者の並びに固定し、結果を入力しても
+      行そのものは動かさない。順位（左端の列）だけを「勝数→直接対決→Buchholz
+      （対戦相手の勝数合計）→今回の合宿設定で並べた参加者の順」で算出して表示する。
+      1局も決着していないうちは順位列を「－」にする（まだ実力差が出ていないのに
+      順位がついて見えるのを防ぐため）。表の下に、回戦タブ＋対局カードで結果を
+      入力するセクションがある。組み合わせは公式のスイス式（ダッチシステム）に
+      準拠：成績（勝数）でグループ分けし、各グループを「今回の合宿設定」の並び順
+      のまま上位半分・下位半分に分けて、上位1位×下位1位…とクロスに組む（1回戦は
+      全員同成績なので、参加者全体を上位半分・下位半分に分けて組む）。グループの
+      人数が奇数のときは、並び順で一番後ろの1人を1段階成績の低いグループへ降格
+      させて一緒に処理する。クロスの相手が対戦済みの場合は、下位半分の中で相手を
+      前後にずらして再戦にならない組み合わせを探す（それでも見つからなければ
+      仕方なく再戦を許容する）。次の回戦は前の回戦の全結果が揃うまで生成しない。
+      過去の回戦（最新以外）の結果もタップして修正できる。ただし修正すると、
+      その回戦より後に生成済みの回戦は自動的に消去される（結果が変わることで
+      それ以降の組み合わせの前提が崩れるため。組み直しが必要）。全体人数が
+      奇数のときは1人がbye（まだbyeを経験していない人を優先。勝敗に影響しない・
+      不戦敗にはしない）。
+  - 麻雀（回ごとの自由対局記録、実装済み）
+      対象は「今回の合宿設定」で麻雀ON・かつ名簿に存在する参加者。半チャンのたびに
+      その中から卓の4人を自由に選んで記録する（入れ替わり・抜け番に対応。既存の
+      点棒＝mahjong.htmlと同じ、2〜4位を入力すると1位が自動計算される入力方式）。
+      記録は players[]（1位〜4位の順）・points[]・chips[] を持つ配列として蓄積し、
+      日付を持たない（合宿1回＝1つの記録の集合）。今回の合宿の麻雀順位は、
+      対局pt＋チップ換算pt（重み設定内のチップレートで換算）の総合ポイント順で
+      算出し、各対局の1〜4位バッジ・対局回数もあわせて表示する。対局履歴は
+      新しい順に一覧表示し、削除（確認ダイアログ＋10秒間の「元に戻す」Undo対応）と、
+      修正（モーダルでポイント・チップの値を編集。対局者の入れ替えは非対応、
+      誤って選んだ場合は削除して登録し直す）の両方に対応。他の参加者の更新による
+      リアルタイム同期で、入力中のフォームが消えないよう編集中フラグ
+      （mjRankInputDirty）でガードしている。
+  - 総合（囲碁ポイント×重み＋麻雀ポイント×重み、実装済み）
+      囲碁・麻雀それぞれの「今回の合宿」内の現在の順位を、固定配点表
+      （1位100／2位80／3位60／4位50／5位40／6位30／7位25／8位20／9位16／
+      10位13／11位10／12位7／13位4／14位2。15位以下は今のところ0点＝今後の課題）
+      でポイント化し、⚙️設定タブの重みを掛けて合算する（表示のたびにその場で
+      計算する。保存はしない）。囲碁は1局も決着していない間、麻雀は対局記録が
+      1件も無い間はその種目のポイントを0のまま扱う（両方とも結果が無ければ
+      「まだ結果がありません」と表示）。片方の種目だけ参加した人は、参加して
+      いない方を「未参加」と表示し、0点扱いにはするが順位計算そのものからは
+      除外しない（総合ポイントに単純加算されるだけなので不利益にはならない）。
+  - 過去の合宿（実装済み）
+      ⚙️設定タブの「新しい合宿にする」で、今回の合宿（開始日・終了日・参加者・
+      囲碁結果・麻雀結果・その時点の重み／チップレート／シーズン番号のスナップ
+      ショット）を📚過去の合宿タブにアーカイブしてから、開催日・参加者・回戦数・
+      対局結果を白紙に戻す（重み・チップレート・シーズンだけ次の合宿にそのまま
+      引き継ぐ。参加者・回戦数は合宿ごとに毎回選び直す）。
+      📚過去の合宿タブは3層構造：①シーズンで絞り込み可能な通算成績（囲碁／麻雀／
+      総合をそれぞれ集計。進行中の合宿も対象シーズンなら含める）②合宿ごとの一覧
+      （直近6件＋もっと見る）③「結果を見る」で展開する合宿ごとの詳細（囲碁マス目表・
+      麻雀順位・総合順位を、今回の合宿の各タブと同じ形式で読み取り専用表示）。
+      アーカイブ済みの合宿は、アーカイブ時点の重み・チップレートで計算されるため、
+      後から重みを変更しても過去の合宿の総合順位は変わらない。
+  - 設定タブ（管理者の仕事）：重み設定（囲碁・麻雀それぞれの重み。デフォルト
+    囲碁1.0・麻雀1.0）、シーズン管理（西さんが手動で区切る。「今のシーズンを
+    終えて次を始める」でその時点の重みをFirebaseにアーカイブしてシーズン番号を
+    進める。重みの値自体は次シーズンにそのまま引き継がれる）、結果だけリセット
+    （今回の合宿の囲碁結果のみ消去、参加者・回戦数は保持）、完全リセット（今回の
+    合宿設定・結果・シーズン番号・重み・📚過去の合宿アーカイブ・過去のシーズン
+    記録をすべて初期化。対局者名簿は保持）、データエクスポート（gasshukuノード
+    全体をJSONダウンロード）を実装済み。
+  - 合言葉認証・Firebase同期ステータス表示・トースト通知・管理者メニュー
+    折りたたみなど、山あるき／大石道場共通のUI部品はこの段階で導入済み。
+
+【今後の改良候補】
+  - 15位以下が出た場合の配点方針の検討
+  - アーカイブ済みの合宿記録の修正・削除（現状は一度アーカイブすると読み取り専用）
+  - 【重要】囲碁・麻雀どちらか片方しか参加しない人の総合順位の扱い
+    （現状は単純合計＝doesIgo/doesMjで0点扱いにするだけなので、両方参加した人が
+    構造的に有利になる。検討した案：A.今のまま単純合計／B.参加した種目数で
+    割って平均化（天井が揃うが「両方頑張った」貢献が薄まる）／C.総合ランキングは
+    両方参加した人限定にする／D.片方だけの人に、もう片方の順位を仮補完する。
+    まだ結論は出ていない）
+  - byeで休んだ人が「不戦敗は基本なし・時間差で対局する」の方針通り実際に
+    対局した場合、その結果をアプリ上に反映する手段がまだ無い
+  - 合言葉はアプリ側の入力チェックのみで、Firebase自体は誰でも読み書きできる
+    構造（他の山あるき／大石道場アプリ共通の弱点）
+  - 名簿に同姓同名がいる場合、画面上は名前でしか表示していないため区別できない
+    （IDは別々に管理されているが、表示上は見分けがつかない）
+  - 合宿の途中で重み・チップレートを変更すると、アーカイブ前は常に「今の設定」で
+    計算し直す仕様のため、既に登録済みの対局・結果の総合ポイント表示も遡って
+    変わってしまう（意図した動作だが、驚く人がいるかもしれない）
+  - 大人数（15人以上）での動作は未検証（回戦数の目安・クロスペアリングで
+    降格が偏らないかなど、14人を超えたあたりからの挙動は実地で試せていない）
+  - 名簿の段位（初段〜九段）が、囲碁パートの組み合わせ・順位に一切反映されて
+    いない（参加者を選ぶときのラベル表示にしか使っておらず、大石道場杯のような
+    昇段・降段との連動は未着手）
+  - 参加者が合宿途中で入れ替わった場合の「今回の合宿設定」再編集の扱い
+    （現時点では上書き確認のみ。結果と紐づいた後の編集制限は未検討）
+================================================================================
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大石道場合宿</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", YuGothic, sans-serif;
+    background: #fcfaf2; color: #333;
+  }
+  #app { max-width: 500px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+  #header { background: #2c3e50; color: #fff; padding: 14px 16px 10px; text-align: center; position: sticky; top: 0; z-index: 101; }
+  #header h1 { font-size: 1.1rem; letter-spacing: 2px; font-weight: bold; }
+  #sync-row { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 5px; }
+  #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #2ecc71; display: inline-block; }
+  #sync-label { font-size: 0.7rem; color: #aed6f1; }
+
+  #nav { display: flex; background: #f1f0ea; border-bottom: 1px solid #e0dbcd; position: sticky; top: 0; z-index: 100; overflow-x: auto; }
+  .tab-btn {
+    flex: 1; padding: 11px 4px; border: none; background: none;
+    font-size: 0.78rem; font-weight: bold; color: #777; cursor: pointer;
+    white-space: nowrap; border-bottom: 3px solid transparent;
+  }
+  .tab-btn.active { color: #2c3e50; background: #fff; border-bottom-color: #b89752; }
+
+  #content { padding: 18px 16px; flex: 1; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  h3 { border-left: 4px solid #b89752; padding-left: 8px; margin-bottom: 12px; color: #2c3e50; font-size: 1rem; }
+  .note { font-size: 0.8rem; color: #888; margin: -6px 0 14px; line-height: 1.5; }
+  .placeholder {
+    background: #f1f0ea; border: 1px dashed #ccc4ac; border-radius: 8px;
+    padding: 16px; font-size: 0.85rem; color: #999; line-height: 1.7;
+  }
+
+  .fg { margin-bottom: 12px; }
+  label { display: block; margin-bottom: 4px; font-weight: bold; font-size: 0.86rem; color: #444; }
+  input, select {
+    width: 100%; padding: 10px; border: 1px solid #ddd8cc;
+    border-radius: 6px; font-size: 1rem; background: #fff;
+  }
+  .btn {
+    width: 100%; padding: 12px; background: #2c3e50; color: #fff;
+    border: none; border-radius: 6px; font-size: 0.95rem;
+    font-weight: bold; cursor: pointer; letter-spacing: 1px; margin-top: 4px;
+  }
+  .btn:active { opacity: 0.85; }
+
+  /* 麻雀：結果入力（順位ごとの行） */
+  .mj-rank-input-row {
+    display: flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid #ddd8cc;
+    border-radius: 8px; padding: 10px 6px; margin-bottom: 8px;
+  }
+  .mj-rank-input-row.top-auto-row { background: #f4f9f4; border-color: #a3d1a3; }
+  .mj-ri-label { width: 44px; font-weight: bold; font-size: 0.85rem; flex-shrink: 0; text-align: center; }
+  .mj-ri-select { flex: 1; padding: 8px 2px; font-size: 0.82rem; min-width: 0; }
+  .mj-ri-val-wrap { display: flex; flex-direction: column; align-items: flex-end; width: 92px; flex-shrink: 0; }
+  .mj-ri-val-title { font-size: 0.6rem; color: #999; margin-bottom: 2px; padding-right: 4px; }
+  .mj-ri-input-box { display: flex; width: 100%; gap: 3px; align-items: center; }
+  .mj-ri-pt-input, .mj-ri-chip-input { flex: 1; width: 100%; padding: 6px 4px; text-align: right; font-size: 0.95rem; font-weight: bold; min-width: 0; }
+  .mj-ri-pt-input:read-only, .mj-ri-chip-input:read-only { background: #eaf2ea; color: #27ae60; border-color: #c2e0c2; }
+  .mj-sign-toggle-btn {
+    width: 24px; height: 28px; background: #f0ede4; color: #555;
+    border: 1px solid #d0cbd4; border-radius: 4px; font-size: 0.65rem;
+    font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .mj-sign-toggle-btn.hidden { visibility: hidden; width: 0; padding: 0; border: none; margin: 0; }
+
+  /* 過去の合宿：一覧カード・見出し */
+  h4.section-head { border-left: 4px solid #b89752; padding-left: 8px; color: #2c3e50; margin: 20px 0 10px; font-size: 0.92rem; }
+  h4.section-head:first-child { margin-top: 0; }
+  .archive-card {
+    background: #f1f0ea; border: 1px solid #e0dbcd; border-radius: 6px;
+    padding: 10px 12px; margin-bottom: 8px; font-size: 0.85rem;
+  }
+
+  /* 総合順位 */
+  .sogo-row {
+    display: flex; align-items: center; gap: 10px;
+    background: #fdfdfb; border: 1px solid #e0dbcd;
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+  }
+  .sogo-num { width: 30px; text-align: center; font-size: 1.1rem; flex-shrink: 0; }
+  .sogo-info { flex: 1; min-width: 0; }
+  .sogo-name { font-weight: bold; font-size: 0.92rem; }
+  .sogo-sub { color: #888; font-size: 0.74rem; margin-top: 3px; }
+  .sogo-total { font-size: 1.15rem; font-weight: bold; color: #2c3e50; flex-shrink: 0; }
+  .sogo-table-toggle {
+    font-size: 0.8rem; color: #b89752; cursor: pointer; margin: 4px 0 14px; display: inline-block;
+  }
+
+  /* 麻雀：順位表・履歴 */
+  .mj-rank-row {
+    background: #fdfdfb; border: 1px solid #e0dbcd;
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .mj-rank-num { width: 30px; font-size: 1.1rem; text-align: center; flex-shrink: 0; }
+  .mj-rank-info { flex: 1; min-width: 0; }
+  .mj-rank-name { font-weight: bold; font-size: 0.9rem; }
+  .mj-rank-sub { color: #888; font-size: 0.74rem; margin-top: 3px; }
+  .mj-rank-score { text-align: right; flex-shrink: 0; }
+  .mj-rank-score-val { font-size: 1.05rem; font-weight: bold; }
+  .mj-pt-pos { color: #27ae60; } .mj-pt-neg { color: #e74c3c; } .mj-pt-zero { color: #888; }
+  .mj-hist-item {
+    background: #fdfdfb; border: 1px solid #e0dbcd;
+    padding: 8px 6px; border-radius: 8px; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mj-hist-grid {
+    flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; text-align: center; min-width: 0;
+  }
+  .mj-hist-player-box {
+    background: #fff; border: 1px solid #f2eee2; border-radius: 5px;
+    padding: 4px 1px; display: flex; flex-direction: column; gap: 1px; min-width: 0;
+  }
+  .mj-hist-name-cell { font-weight: bold; font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #444; }
+  .mj-hist-pt-cell { font-weight: bold; font-size: 0.82rem; }
+  .mj-hist-chip-cell { font-size: 0.65rem; font-weight: bold; margin-top: 1px; color: #666; }
+  .mj-hist-del-btn {
+    background: #e74c3c; color: #fff; border: none;
+    padding: 6px 10px; border-radius: 4px; font-size: 0.76rem; cursor: pointer; flex-shrink: 0;
+  }
+  .mj-hist-edit-btn {
+    background: #b89752; color: #fff; border: none;
+    padding: 6px 10px; border-radius: 4px; font-size: 0.76rem; cursor: pointer; flex-shrink: 0;
+  }
+
+  /* 囲碁：対局者×回戦のマス目表 */
+  .matrix-wrap { overflow-x: auto; margin: 8px 0 4px; }
+  .matrix-wrap table { width: 100%; border-collapse: collapse; background: #faf9f5; font-size: 0.78rem; }
+  .matrix-wrap th, .matrix-wrap td { border: 1px solid #ddd8cc; padding: 6px 5px; text-align: center; white-space: nowrap; }
+  .matrix-wrap th { background: #f1f0ea; color: #2c3e50; font-size: 0.72rem; }
+  .igo-cell-win { color: #2e7d5e; font-weight: bold; }
+  .igo-cell-loss { color: #222; font-weight: bold; }
+  .igo-cell-pending { color: #999; font-size: 0.76rem; }
+  .igo-cell-empty { color: #ccc; }
+
+  /* 囲碁：回戦タブ・組み合わせカード・順位表 */
+  #igo-round-tabs { display: flex; gap: 6px; overflow-x: auto; margin: 10px 0 14px; padding-bottom: 2px; }
+  .round-tab-btn {
+    flex-shrink: 0; padding: 7px 14px; border: 1px solid #ddd8cc; border-radius: 16px;
+    background: #fff; font-size: 0.8rem; font-weight: bold; color: #777; cursor: pointer;
+  }
+  .round-tab-btn.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+  .round-tab-btn.done { border-color: #b89752; }
+  .match-card {
+    display: flex; align-items: center; background: #fff; border: 1px solid #ddd8cc;
+    border-radius: 8px; margin-bottom: 8px; overflow: hidden;
+  }
+  .match-side {
+    flex: 1; padding: 12px 10px; text-align: center; font-size: 0.88rem; font-weight: bold;
+    color: #555; cursor: pointer; background: #fff;
+  }
+  .match-side.winner { background: #fdf1ef; color: #b03a2e; }
+  .match-vs { padding: 0 6px; color: #bbb; font-size: 0.76rem; flex-shrink: 0; }
+  .match-bye { padding: 12px; text-align: center; color: #888; font-size: 0.86rem; }
+
+  /* 参加者選択：名簿から追加するリスト（ピル型ボタン） */
+  .add-participant-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .add-participant-btn {
+    background: #f0ede4; border: 1px solid #ddd; border-radius: 20px;
+    padding: 6px 14px; font-size: 0.84rem; cursor: pointer;
+    font-family: inherit; color: #555;
+  }
+  .add-participant-btn:active { background: #e0dbcd; }
+
+  /* 参加者選択：選んだ人のドラッグ並び替えリスト */
+  .participant-item {
+    display: flex; align-items: center; gap: 8px;
+    background: #fff; border: 1px solid #ddd8cc; border-radius: 8px;
+    padding: 8px 8px; margin-bottom: 6px; touch-action: none;
+  }
+  .participant-item.dragging { background: #fdf8ee; border-color: #b89752; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  .participant-num { width: 18px; text-align: center; color: #999; font-weight: bold; font-size: 0.78rem; flex-shrink: 0; }
+  .participant-name { flex: 1; min-width: 0; font-size: 0.88rem; font-weight: bold; color: #2c3e50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .participant-sub-toggles { display: flex; gap: 6px; flex-shrink: 0; }
+  .sub-toggle-btn {
+    background: #f0ede4; border: 1px solid #ddd; border-radius: 14px;
+    padding: 4px 10px; font-size: 0.76rem; cursor: pointer;
+    font-family: inherit; color: #999;
+  }
+  .sub-toggle-btn.on { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+  .participant-remove-btn {
+    width: 28px; height: 28px; flex-shrink: 0; border: none; border-radius: 6px;
+    background: #f0ede4; color: #999; font-size: 0.85rem; cursor: pointer;
+  }
+  .participant-remove-btn:active { background: #e74c3c; color: #fff; }
+  .participant-handle {
+    width: 28px; height: 28px; flex-shrink: 0; display: flex;
+    align-items: center; justify-content: center;
+    color: #bbb; font-size: 1.1rem; cursor: grab; touch-action: none;
+  }
+  .participant-handle:active { color: #555; cursor: grabbing; }
+  #participant-count { font-size: 0.82rem; color: #888; margin: 8px 0 14px; }
+  #participant-count.over { color: #c0392b; font-weight: bold; }
+
+  /* 対局者名簿 */
+  .roster-item {
+    display: flex; align-items: center; gap: 6px;
+    background: #fff; border: 1px solid #ddd8cc; border-radius: 8px;
+    padding: 6px 8px; margin-bottom: 6px;
+  }
+  .roster-name-wrap { flex: 1; min-width: 0; }
+  .roster-item input.roster-name { width: 100%; padding: 8px; box-sizing: border-box; }
+  .roster-id { font-size: 0.66rem; color: #bbb; font-family: monospace; margin: 3px 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .roster-item select.roster-rank { width: 78px; flex-shrink: 0; padding: 0 2px; font-size: 0.76rem; box-sizing: border-box; }
+  .roster-del-btn {
+    width: 30px; height: 30px; flex-shrink: 0; border: none; border-radius: 6px;
+    background: #f0ede4; color: #999; font-size: 0.9rem; cursor: pointer;
+  }
+  .roster-del-btn:active { background: #e74c3c; color: #fff; }
+
+  #setup-banner {
+    background: #fff3cd; border: 1px solid #ffc107; color: #856404;
+    padding: 14px 16px; border-radius: 8px; margin-bottom: 16px;
+    font-size: 0.85rem; line-height: 1.7; display: none;
+  }
+
+  #admin-toggle {
+    cursor: pointer; padding: 12px 0; display: flex; align-items: center; gap: 8px;
+    color: #2c3e50; font-weight: bold; font-size: 1rem; border-bottom: 1px solid #e0dbcd;
+  }
+
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #2c3e50; color: #fff; padding: 10px 18px;
+    border-radius: 20px; font-size: 0.88rem; z-index: 999;
+    display: none; align-items: center; gap: 12px; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  }
+  #toast-undo {
+    background: none; border: 1px solid #fff; color: #fff;
+    padding: 3px 10px; border-radius: 12px; font-size: 0.82rem; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<script>
+(function(){
+  var KEY = 'gosenrigue_auth';
+  var PASS = 'ごせんりーぐ';
+  if(localStorage.getItem(KEY) !== 'ok'){
+    var input = prompt('合言葉を入力してください');
+    if(input === PASS){
+      localStorage.setItem(KEY, 'ok');
+    } else {
+      document.documentElement.innerHTML = '<body style="font-family:sans-serif;text-align:center;padding:60px"><h2>アクセスできません</h2></body>';
+      throw new Error('access denied');
+    }
+  }
+})();
+</script>
+<div id="app">
+
+  <div id="header">
+    <h1>🏕️ 大石道場合宿</h1>
+    <div id="sync-row"><span id="sync-dot"></span><span id="sync-label">接続中...</span></div>
+  </div>
+
+  <div id="nav">
+    <button class="tab-btn active" data-tab="igo">⚫囲碁</button>
+    <button class="tab-btn" data-tab="mahjong">🀄麻雀</button>
+    <button class="tab-btn" data-tab="sogo">🏅総合</button>
+    <button class="tab-btn" data-tab="archive">📚過去の合宿</button>
+    <button class="tab-btn" data-tab="setup">⚙️設定</button>
+  </div>
+
+  <div id="content">
+
+    <!-- ⚫囲碁パート（スイス式） -->
+    <div class="panel active" id="panel-igo">
+      <h3>囲碁（スイス式）</h3>
+      <div id="igo-content"></div>
+    </div>
+
+    <!-- 🀄麻雀パート（回ごとの自由対局記録） -->
+    <div class="panel" id="panel-mahjong">
+      <h3>麻雀（回ごとの記録）</h3>
+      <div id="mahjong-content"></div>
+    </div>
+
+    <!-- 🏅総合 -->
+    <div class="panel" id="panel-sogo">
+      <h3>総合順位</h3>
+      <div id="sogo-content"></div>
+    </div>
+
+    <!-- 📚過去の合宿 -->
+    <div class="panel" id="panel-archive">
+      <h3>過去の合宿</h3>
+      <div id="archive-content"></div>
+    </div>
+
+    <!-- ⚙️設定 -->
+    <div class="panel" id="panel-setup">
+      <div id="setup-banner">
+        ⚙️ <strong>Firebase未設定 — ローカル動作中</strong><br>
+        全員でリアルタイム共有するには <code>firebaseConfig</code> を設定してください。
+      </div>
+
+      <h3>今回の合宿設定</h3>
+      <p class="note">参加者は下の対局者名簿から選びます。名簿の追加・編集は「管理者の仕事」内で行います。</p>
+      <div class="fg"><label>開始日</label><input id="gs-event-start" type="date"></div>
+      <div class="fg"><label>終了日（1日だけの開催なら空欄でOK）</label><input id="gs-event-end" type="date"></div>
+      <div class="fg">
+        <label>参加者を名簿から追加</label>
+        <div class="add-participant-list" id="gs-add-participants"></div>
+      </div>
+      <div class="fg">
+        <label>選んだ参加者（☰で並び替え・✕で取り消し）</label>
+        <div id="gs-participants-selected"></div>
+        <div id="participant-count"></div>
+      </div>
+      <div class="fg">
+        <label>囲碁の回戦数</label>
+        <input id="gs-igo-rounds" type="number" min="1" max="10" inputmode="numeric" placeholder="例：4">
+        <p class="note" style="margin-top:6px">参加人数に応じて手動で入力してください（目安：4〜5回戦程度）。</p>
+      </div>
+      <button class="btn" id="save-setup">保存して全員に同期</button>
+
+      <div id="admin-toggle" style="margin-top:24px">
+        <span id="admin-arrow">▶</span>
+        <span>管理者の仕事</span>
+      </div>
+      <div id="admin-body" style="display:none;margin-top:16px">
+        <h3>対局者名簿</h3>
+        <p class="note">大石道場杯とは別の、合宿専用の名簿です。合宿に参加しうる人をあらかじめ登録しておきます（段位は任意・囲碁の参考情報）。各行のIDは対局者を名前ではなく識別するための管理用の番号です（先頭8文字を表示）。</p>
+        <div id="roster-list"></div>
+        <div class="fg" style="display:flex;gap:8px;align-items:flex-end;margin-top:10px">
+          <div style="flex:1"><label>名前</label><input id="roster-new-name" type="text" placeholder="名前"></div>
+          <div style="width:78px"><label>段位</label><select id="roster-new-rank"><option value="">－</option><option value="初段">初段</option><option value="二段">二段</option><option value="三段">三段</option><option value="四段">四段</option><option value="五段">五段</option><option value="六段">六段</option><option value="七段">七段</option><option value="八段">八段</option><option value="九段">九段</option></select></div>
+          <button class="btn" id="roster-add-btn" style="width:auto;padding:10px 16px;margin:0;flex-shrink:0">追加</button>
+        </div>
+        <button class="btn" id="roster-save-btn" style="background:#b89752;margin-top:12px">名簿の変更を保存して同期</button>
+
+        <h3 style="margin-top:24px">重み設定</h3>
+        <p class="note">囲碁・麻雀それぞれの重み。合宿の総合順位は「囲碁ポイント×この重み＋麻雀ポイント×この重み」で計算されます。点棒のチップレート設定と同じ扱いで、シーズンごとに保存されます。</p>
+        <div class="fg" style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">⚫囲碁</span>
+          <input id="weight-igo" type="number" step="0.1" min="0" style="text-align:center">
+        </div>
+        <div class="fg" style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">🀄麻雀</span>
+          <input id="weight-mahjong" type="number" step="0.1" min="0" style="text-align:center">
+        </div>
+        <p class="note">麻雀のチップ1枚を何ポイントとして換算するか（点棒と同じ考え方。麻雀パートの合宿内順位の計算に使います）。</p>
+        <div class="fg" style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">🪙レート</span>
+          <input id="mj-chip-rate" type="number" step="any" style="text-align:center">
+        </div>
+        <button class="btn" id="save-weights" style="background:#b89752">重み・レートを保存して同期</button>
+
+        <h3 style="margin-top:24px">シーズン管理</h3>
+        <p class="note">西さんが手動で区切ります（igo.html/mahjong.htmlと同じ運用）。シーズンを終えると、その時点の重みの値ごとアーカイブされ、次のシーズンが始まります（重みの値はそのまま引き継がれるので、必要ならそこで調整してください）。</p>
+        <div id="season-info" style="margin-bottom:12px;font-size:0.9rem;color:#2c3e50;font-weight:bold"></div>
+        <button class="btn" id="season-end-btn" style="background:#e67e22">今のシーズンを終えて次を始める</button>
+        <div id="past-seasons" style="margin-top:16px"></div>
+
+        <h3 style="margin-top:24px">新しい合宿にする</h3>
+        <p class="note">今回の合宿を📚過去の合宿にアーカイブしてから、次の合宿に備えて白紙に戻します（開催日・対局結果はリセットされます。参加者・回戦数・重み・チップレート・シーズンは引き継がれます）。</p>
+        <button class="btn" id="new-camp-btn" style="background:#e74c3c">今回の合宿をアーカイブして新しく始める</button>
+
+        <h3 style="margin-top:24px">結果のリセット</h3>
+        <p class="note">今回の合宿の対局結果（囲碁・麻雀とも）だけを消去します。参加者・回戦数の設定はそのまま残ります。入力ミスのやり直しにお使いください。</p>
+        <button class="btn" id="reset-results-btn" style="background:#e67e22">結果だけリセット</button>
+
+        <h3 style="margin-top:24px">完全リセット</h3>
+        <p class="note">テスト中など、すべてをやり直したいときに使います。今回の合宿設定・対局結果・シーズン番号・重み・📚過去の合宿アーカイブ・過去のシーズン記録をすべて消去して最初の状態に戻します（対局者名簿は保持されます）。</p>
+        <button class="btn" id="full-reset-btn" style="background:#888">完全リセットする</button>
+
+        <h3 style="margin-top:24px">データエクスポート</h3>
+        <p class="note">Firebaseのデータをファイルとして保存します。万が一のバックアップに使ってください。</p>
+        <button class="btn" id="export-btn" style="background:#2c3e50">JSONでダウンロード</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div id="toast"><span id="toast-msg"></span><button id="toast-undo" style="display:none">元に戻す</button></div>
+
+<!-- 麻雀：記録修正モーダル -->
+<div id="mj-edit-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto">
+  <div style="background:#fff;margin:40px auto;max-width:420px;border-radius:10px;padding:20px;box-sizing:border-box">
+    <h3 style="border-left:4px solid #b89752;padding-left:8px;color:#2c3e50;margin-top:0;font-size:1rem">対局記録の修正</h3>
+    <div id="mj-edit-players-wrap"></div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button id="mj-edit-save" style="flex:1;background:#b89752;color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.9rem;cursor:pointer">保存する</button>
+      <button id="mj-edit-cancel" style="flex:1;background:#999;color:#fff;border:none;padding:10px;border-radius:6px;font-size:0.9rem;cursor:pointer">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey:            "AIzaSyBSrQkPMPc-icuph244VBorNqRf2yP-U7Y",
+  authDomain:        "hiking-558a9.firebaseapp.com",
+  databaseURL:       "https://hiking-558a9-default-rtdb.firebaseio.com",
+  projectId:         "hiking-558a9",
+  storageBucket:     "hiking-558a9.firebasestorage.app",
+  messagingSenderId: "1066293850319",
+  appId:             "1:1066293850319:web:94409f01b194d5afe7c7ba"
+};
+
+const isConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+// ---------- State ----------
+// 合宿専用のFirebaseノード（大石道場杯の tournament/ とは完全に分離する）
+let roster = {};   // { id: { name, rank } }
+// state.participants: [ {id, igo, mahjong}, ... ]  配列なので並び順を保持できる。
+// 参加者に加えた時点で囲碁・麻雀ともデフォルトON。
+// state.igoResults: 回戦ごとの組み合わせ・結果の配列。
+// [ [ {a, b, winner}, ... ], ... ]  a/bは名簿ID。bがnullなら不戦（bye）で winner は常に"bye"。
+// winnerは "a" | "b" | "bye" | null（未定）。
+// 配列の長さ＝これまでに生成済みの回戦数。最後の要素だけが編集可能（それより前は確定として扱う）。
+// state.weights: 総合ポイント計算用の重み。state.season: 西さんが手動で区切るシーズン番号。
+// state.mahjongResults: [ { players:[id,id,id,id], points:[p1,p2,p3,p4], chips:[c1,c2,c3,c4] }, ... ]
+// players[i]が1位〜4位の順（rank順）に対応する。state.chipRate: チップ1枚あたりの換算ポイント。
+let state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1 };
+let rosterRef = null, stateRef = null, seasonsRef = null, archiveRef = null;
+let editingRoster = false, editingSetup = false, editingWeights = false;
+let rosterLoaded = false, stateLoaded = false;
+
+if (isConfigured) {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    rosterRef  = firebase.database().ref("gasshuku/roster");
+    stateRef   = firebase.database().ref("gasshuku/state");
+    seasonsRef = firebase.database().ref("gasshuku/seasons");
+    archiveRef = firebase.database().ref("gasshuku/archive");
+
+    rosterRef.on("value", snap => {
+      roster = snap.val() || {};
+      rosterLoaded = true;
+      onDataReady();
+    }, () => setSyncStatus(false));
+
+    stateRef.on("value", snap => {
+      const data = snap.val();
+      state = {
+        eventStartDate: (data && typeof data.eventStartDate === "string") ? data.eventStartDate : "",
+        eventEndDate:   (data && typeof data.eventEndDate === "string") ? data.eventEndDate : "",
+        participants: normParticipants(data && data.participants),
+        igoRounds:      (data && typeof data.igoRounds === "number") ? data.igoRounds : null,
+        igoResults:     (data && Array.isArray(data.igoResults)) ? data.igoResults : [],
+        weights: {
+          igo:     (data && data.weights && typeof data.weights.igo === "number") ? data.weights.igo : 1,
+          mahjong: (data && data.weights && typeof data.weights.mahjong === "number") ? data.weights.mahjong : 1
+        },
+        season: (data && typeof data.season === "number") ? data.season : 1,
+        mahjongResults: (data && Array.isArray(data.mahjongResults)) ? data.mahjongResults : [],
+        chipRate: (data && typeof data.chipRate === "number") ? data.chipRate : 1
+      };
+      stateLoaded = true;
+      onDataReady();
+    }, () => setSyncStatus(false));
+  } catch(e) {
+    console.error("Firebase init failed:", e);
+    setSyncStatus(false);
+  }
+} else {
+  document.getElementById("setup-banner").style.display = "block";
+  setSyncStatus(false);
+  renderRosterList();
+  renderParticipants();
+}
+
+// roster・state の両方が揃うたびに呼ばれる
+function onDataReady() {
+  if (!rosterLoaded || !stateLoaded) return;
+  if (!editingRoster) renderRosterList();
+  renderParticipants();
+  if (!editingSetup) fillSetupInputs();
+  if (!editingWeights) fillWeightInputs();
+  renderSeasonInfo();
+  renderIgoTab();
+  renderMahjongTab();
+  renderSogoTab();
+  setSyncStatus(true);
+}
+
+function pushRoster() { if (rosterRef) rosterRef.set(roster); }
+function pushState()  { if (stateRef)  stateRef.set(state); }
+
+// Firebaseは配列をオブジェクト化して返すことがあるため、読み込み時に必ず配列へ正規化する。
+// さらに、配列化する前の旧スキーマ（キー＝名簿ID、値に id を持たない）が
+// まだ残っている場合にも対応し、キーをidとして補って移行する。
+function normParticipants(v) {
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (v && typeof v === "object") {
+    return Object.keys(v).map(k => {
+      const val = v[k];
+      if (!val) return null;
+      return val.id ? val : { id: k, igo: !!val.igo, mahjong: !!val.mahjong };
+    }).filter(Boolean);
+  }
+  return [];
+}
+
+function setSyncStatus(online) {
+  const dot = document.getElementById("sync-dot");
+  const lbl = document.getElementById("sync-label");
+  if (!isConfigured) { dot.style.background = "#e67e22"; lbl.textContent = "ローカルモード（Firebase未設定）"; return; }
+  if (online) {
+    dot.style.background = "#2ecc71";
+    const now = new Date();
+    lbl.textContent = `リアルタイム同期中 · ${now.getHours()}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  } else { dot.style.background = "#e74c3c"; lbl.textContent = "オフライン"; }
+}
+function pad(n) { return String(n).padStart(2, "0"); }
+
+// ---------- タブ ----------
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "igo") renderIgoTab();
+    if (btn.dataset.tab === "mahjong") renderMahjongTab();
+    if (btn.dataset.tab === "sogo") renderSogoTab();
+    if (btn.dataset.tab === "archive") { archiveShowAll = false; renderArchiveTab(); }
+  });
+});
+
+// ---------- 管理者メニュー開閉 ----------
+document.getElementById("admin-toggle").addEventListener("click", () => {
+  const body = document.getElementById("admin-body");
+  const arrow = document.getElementById("admin-arrow");
+  const isOpen = body.style.display !== "none";
+  body.style.display = isOpen ? "none" : "";
+  arrow.textContent = isOpen ? "▶" : "▼";
+});
+
+// ---------- トースト ----------
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById("toast");
+  document.getElementById("toast-msg").textContent = msg;
+  document.getElementById("toast-undo").style.display = "none";
+  el.style.display = "flex";
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.style.display = "none", 2500);
+}
+
+// ---------- 共通ヘルパー ----------
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+// 名簿から削除された対局者でも、アーカイブ時点の名前スナップショットがあれば表示する
+function resolveName(id, nameFallback) {
+  return roster[id]?.name || (nameFallback && nameFallback[id]) || "（削除済み）";
+}
+const RANK_SELECT_OPTIONS = ["","初段","二段","三段","四段","五段","六段","七段","八段","九段"];
+function rosterIdsSorted() {
+  return Object.keys(roster).sort((a, b) => (roster[a].name || "").localeCompare((roster[b].name || ""), "ja"));
+}
+
+// ---------- 対局者名簿 ----------
+function rosterItemHTML(id) {
+  const p = roster[id] || { name: "", rank: "" };
+  const opts = RANK_SELECT_OPTIONS.map(r => `<option value="${r}"${p.rank===r?" selected":""}>${r || "－"}</option>`).join("");
+  return `
+    <div class="roster-item" data-id="${id}">
+      <div class="roster-name-wrap">
+        <input type="text" class="roster-name" value="${escapeHtml(p.name || "")}" placeholder="名前">
+        <div class="roster-id" title="${id}">ID: ${id.slice(0, 8)}</div>
+      </div>
+      <select class="roster-rank">${opts}</select>
+      <button type="button" class="roster-del-btn" data-id="${id}">✕</button>
+    </div>`;
+}
+
+function renderRosterList() {
+  const el = document.getElementById("roster-list");
+  if (!el) return;
+  const ids = rosterIdsSorted();
+  el.innerHTML = ids.length
+    ? ids.map(rosterItemHTML).join("")
+    : `<p class="note" style="margin:0">まだ登録された対局者がいません。下のフォームから追加してください。</p>`;
+
+  el.querySelectorAll(".roster-name, .roster-rank").forEach(input => {
+    input.addEventListener("focus", () => editingRoster = true);
+    input.addEventListener("blur",  () => editingRoster = false);
+  });
+  el.querySelectorAll(".roster-del-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.id;
+      const name = (roster[id] && roster[id].name) || "この対局者";
+      if (!confirm(`${name}を名簿から削除しますか？（過去の合宿記録には影響しません）`)) return;
+      delete roster[id];
+      pushRoster();
+      // 現在の参加者選択に含まれていれば外す
+      state.participants = state.participants.filter(p => p.id !== id);
+      pushState();
+      showToast(`${name}を削除しました`);
+      renderParticipants();
+    });
+  });
+}
+
+document.getElementById("roster-add-btn").addEventListener("click", () => {
+  const nameInput = document.getElementById("roster-new-name");
+  const rankSelect = document.getElementById("roster-new-rank");
+  const name = nameInput.value.trim();
+  if (!name) { showToast("名前を入力してください"); return; }
+  const id = crypto.randomUUID();
+  roster[id] = { name, rank: rankSelect.value };
+  pushRoster();
+  nameInput.value = "";
+  rankSelect.value = "";
+  renderRosterList();
+  renderParticipants();
+  showToast(`${name}を名簿に追加しました`);
+});
+
+document.getElementById("roster-save-btn").addEventListener("click", () => {
+  document.querySelectorAll("#roster-list .roster-item").forEach(el => {
+    const id = el.dataset.id;
+    const name = el.querySelector(".roster-name").value.trim();
+    const rank = el.querySelector(".roster-rank").value;
+    if (roster[id]) roster[id] = { name, rank };
+  });
+  pushRoster();
+  renderParticipants();
+  showToast("名簿の変更を保存し、全員に同期しました！");
+});
+
+// ---------- 今回の合宿設定：参加者選択 ----------
+// ①名簿から追加（まだ選ばれていない人だけをピル型ボタンで表示）
+// ②選んだ参加者は別リストに、順番を保持したまま表示。☰を長押しドラッグで並び替え、
+//    ✕で取り消し（＝そのまま参加者から外す）。各行に囲碁／麻雀の参加トグルも表示。
+// 参加者に加えた直後は囲碁・麻雀ともデフォルトON（両方やる人が大半のため）。
+function renderParticipants() {
+  const addWrap = document.getElementById("gs-add-participants");
+  const selWrap = document.getElementById("gs-participants-selected");
+  if (!addWrap || !selWrap) return;
+
+  const selectedIds = new Set(state.participants.map(p => p.id));
+  const addableIds = rosterIdsSorted().filter(id => !selectedIds.has(id));
+
+  addWrap.innerHTML = addableIds.length
+    ? addableIds.map(id => {
+        const p = roster[id];
+        const label = p.rank ? `${escapeHtml(p.name)}（${escapeHtml(p.rank)}）` : escapeHtml(p.name);
+        return `<button type="button" class="add-participant-btn" data-id="${id}">＋ ${label}</button>`;
+      }).join("")
+    : `<p class="note" style="margin:0">${rosterIdsSorted().length ? "全員すでに選ばれています。" : "名簿に対局者を登録してください（管理者の仕事内）。"}</p>`;
+
+  addWrap.querySelectorAll(".add-participant-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      editingSetup = true;
+      state.participants = [...state.participants, { id: btn.dataset.id, igo: true, mahjong: true }];
+      renderParticipants();
+    });
+  });
+
+  const invalidCount = state.participants.filter(p => !roster[p.id]).length;
+  const invalidBanner = invalidCount > 0
+    ? `<div class="note" style="background:#fdf1ef;border:1px solid #e0b3ac;color:#b03a2e;border-radius:8px;padding:10px 12px;margin-bottom:8px">
+        ⚠️ ${invalidCount}件、名簿に存在しない参加者があります（名簿を作り直した際などに残った古いデータの可能性）。
+        <button type="button" class="btn" id="clean-invalid-participants" style="margin-top:8px;background:#b03a2e">まとめて削除する</button>
+      </div>`
+    : "";
+
+  selWrap.innerHTML = invalidBanner + (state.participants.length
+    ? state.participants.map((part, i) => participantItemHTML(part, i)).join("")
+    : `<p class="note" style="margin:0">まだ参加者が選ばれていません。上のリストから追加してください。</p>`);
+
+  const cleanBtn = document.getElementById("clean-invalid-participants");
+  if (cleanBtn) cleanBtn.addEventListener("click", () => {
+    editingSetup = true;
+    state.participants = state.participants.filter(p => roster[p.id]);
+    renderParticipants();
+    showToast("名簿に存在しない参加者を削除しました。「保存して全員に同期」を押すと確定します。");
+  });
+
+  attachParticipantItemEvents();
+  updateParticipantCount();
+}
+
+function participantItemHTML(part, i) {
+  const p = roster[part.id];
+  const name = p ? escapeHtml(p.name) : "（名簿に見つかりません）";
+  return `
+    <div class="participant-item" data-id="${part.id}">
+      <div class="participant-num">${i + 1}</div>
+      <div class="participant-name">${name}</div>
+      <div class="participant-sub-toggles">
+        <button type="button" class="sub-toggle-btn ${part.igo ? "on" : ""}" data-action="igo" data-id="${part.id}">⚫囲碁</button>
+        <button type="button" class="sub-toggle-btn ${part.mahjong ? "on" : ""}" data-action="mahjong" data-id="${part.id}">🀄麻雀</button>
+      </div>
+      <button type="button" class="participant-remove-btn" data-id="${part.id}" title="取り消す">✕</button>
+      <div class="participant-handle" title="ドラッグで並び替え">☰</div>
+    </div>`;
+}
+
+function attachParticipantItemEvents() {
+  const selWrap = document.getElementById("gs-participants-selected");
+  if (!selWrap) return;
+
+  selWrap.querySelectorAll('[data-action="igo"], [data-action="mahjong"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      editingSetup = true;
+      const id = btn.dataset.id, key = btn.dataset.action;
+      const part = state.participants.find(p => p.id === id);
+      if (!part) return;
+      part[key] = !part[key];
+      renderParticipants();
+    });
+  });
+
+  selWrap.querySelectorAll(".participant-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      editingSetup = true;
+      const id = btn.dataset.id;
+      state.participants = state.participants.filter(p => p.id !== id);
+      renderParticipants();
+    });
+  });
+
+  selWrap.querySelectorAll(".participant-handle").forEach(handle => {
+    handle.addEventListener("pointerdown", onParticipantDragStart);
+  });
+}
+
+// 参加者の並び順を、行右端の☰ハンドルを長押ししてドラッグすることで入れ替える。
+// Firebaseにはまだ書き込まず、「保存して全員に同期」を押した時点で反映される。
+let participantDrag = null;
+
+function onParticipantDragStart(e) {
+  const item = e.currentTarget.closest(".participant-item");
+  if (!item) return;
+  e.preventDefault();
+  editingSetup = true;
+  participantDrag = { item };
+  item.classList.add("dragging");
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+  document.addEventListener("pointermove", onParticipantDragMove);
+  document.addEventListener("pointerup", onParticipantDragEnd);
+  document.addEventListener("pointercancel", onParticipantDragEnd);
+}
+
+function onParticipantDragMove(e) {
+  if (!participantDrag) return;
+  const wrap = document.getElementById("gs-participants-selected");
+  if (!wrap) return;
+  const { item } = participantDrag;
+  const y = e.clientY;
+  const others = [...wrap.querySelectorAll(".participant-item")].filter(el => el !== item);
+  for (const other of others) {
+    const r = other.getBoundingClientRect();
+    if (y > r.top && y < r.bottom) {
+      const children = [...wrap.children];
+      if (children.indexOf(item) < children.indexOf(other)) wrap.insertBefore(item, other.nextSibling);
+      else wrap.insertBefore(item, other);
+      renumberParticipantList();
+      break;
+    }
+  }
+}
+
+function onParticipantDragEnd() {
+  if (!participantDrag) return;
+  participantDrag.item.classList.remove("dragging");
+  participantDrag = null;
+  document.removeEventListener("pointermove", onParticipantDragMove);
+  document.removeEventListener("pointerup", onParticipantDragEnd);
+  document.removeEventListener("pointercancel", onParticipantDragEnd);
+  editingSetup = false;
+  // DOM上の並び順から state.participants を作り直す
+  const wrap = document.getElementById("gs-participants-selected");
+  if (wrap) {
+    const orderedIds = [...wrap.querySelectorAll(".participant-item")].map(el => el.dataset.id);
+    state.participants = orderedIds.map(id => state.participants.find(p => p.id === id)).filter(Boolean);
+  }
+  renumberParticipantList();
+}
+
+function renumberParticipantList() {
+  document.querySelectorAll("#gs-participants-selected .participant-item .participant-num").forEach((el, i) => { el.textContent = i + 1; });
+}
+
+function updateParticipantCount() {
+  const el = document.getElementById("participant-count");
+  if (!el) return;
+  const n = state.participants.length;
+  el.textContent = `現在 ${n}人選択中`;
+  el.classList.toggle("over", n > 14);
+  if (n > 14) el.textContent += "（目安の14人を超えています。実施は可能ですが回戦数の目安がやや粗くなります）";
+}
+
+function igoParticipantCount() {
+  return state.participants.filter(p => p.igo).length;
+}
+
+document.getElementById("gs-igo-rounds").addEventListener("input", () => editingSetup = true);
+document.getElementById("gs-igo-rounds").addEventListener("focus", () => editingSetup = true);
+document.getElementById("gs-event-start").addEventListener("focus", () => editingSetup = true);
+document.getElementById("gs-event-start").addEventListener("blur",  () => editingSetup = false);
+document.getElementById("gs-event-end").addEventListener("focus", () => editingSetup = true);
+document.getElementById("gs-event-end").addEventListener("blur",  () => editingSetup = false);
+
+function fillSetupInputs() {
+  document.getElementById("gs-event-start").value = state.eventStartDate || "";
+  document.getElementById("gs-event-end").value = state.eventEndDate || "";
+  document.getElementById("gs-igo-rounds").value = state.igoRounds || "";
+}
+
+document.getElementById("save-setup").addEventListener("click", () => {
+  const wasConfirmed = !!state.igoRounds && state.participants.length > 0;
+  if (wasConfirmed && !confirm("すでに設定済みの合宿情報を上書きします。対局結果がある場合は影響する可能性があります。よろしいですか？")) return;
+
+  const startDate = document.getElementById("gs-event-start").value;
+  const endDate = document.getElementById("gs-event-end").value;
+  const rounds = parseInt(document.getElementById("gs-igo-rounds").value, 10);
+  if (state.participants.length === 0) { showToast("参加者を選んでください"); return; }
+  const needsRounds = igoParticipantCount() > 0;
+  if (needsRounds && (!rounds || rounds < 1)) { showToast("囲碁の回戦数を正しく入力してください"); return; }
+  if (endDate && startDate && endDate < startDate) { showToast("終了日は開始日より後にしてください"); return; }
+
+  state.eventStartDate = startDate;
+  state.eventEndDate = endDate;
+  state.igoRounds = needsRounds ? rounds : null;
+  editingSetup = false;
+  pushState();
+  renderIgoTab();
+  showToast("合宿設定を保存し、全員に同期しました！");
+});
+
+// ============================================================
+//  囲碁（スイス式）
+// ============================================================
+// 対象は「今回の合宿設定」で囲碁ON・かつ現在も名簿に存在する参加者。
+// 並び順は「今回の合宿設定」で決めた参加者の並び。組み合わせもこの並び順を基準に決める
+// （ランダム要素なし。同成績同士の中でも、この並び順を維持したまま組む）。
+function igoParticipantIds() {
+  return state.participants.filter(p => p.igo && roster[p.id]).map(p => p.id);
+}
+
+// これまでの確定済み対局から、対戦済みペアの集合を作る（bye・未決着は含まない）
+function playedPairSet(rounds) {
+  const set = new Set();
+  rounds.forEach(round => round.forEach(m => {
+    if (m.b === null || !m.winner || m.winner === "bye") return;
+    set.add(pairKey(m.a, m.b));
+  }));
+  return set;
+}
+function pairKey(a, b) { return [a, b].sort().join("|"); }
+
+// 現時点までの勝敗を集計（byeは勝敗に影響させない）
+function igoScores(rounds) {
+  const wins = {}, losses = {};
+  rounds.forEach(round => round.forEach(m => {
+    if (m.b === null || !m.winner || m.winner === "bye") return;
+    if (m.winner === "a") { wins[m.a] = (wins[m.a]||0)+1; losses[m.b] = (losses[m.b]||0)+1; }
+    else if (m.winner === "b") { wins[m.b] = (wins[m.b]||0)+1; losses[m.a] = (losses[m.a]||0)+1; }
+  }));
+  return { wins, losses };
+}
+
+function priorByeIds(rounds) {
+  const s = new Set();
+  rounds.forEach(round => round.forEach(m => { if (m.b === null) s.add(m.a); }));
+  return s;
+}
+
+// 1回戦分の組み合わせを生成する。
+// 公式のスイス式ペアリング（ダッチシステムに準拠）。
+// 1. 全員を成績（勝数）でグループ分けし、成績の高いグループから順に処理する
+// 2. 各グループを「今回の合宿設定」の並び順のまま上位半分・下位半分に分け、
+//    上位1位×下位1位、上位2位×下位2位…とクロスで組む
+// 3. グループの人数が奇数のときは、一番並び順が後ろの1人を次の（1段階成績が低い）
+//    グループへ降格させ、そのグループの先頭に加えて一緒に処理する
+// 4. クロスの組み合わせが対戦済みだった場合は、下位半分の中で相手を前後に
+//    ずらしながら再戦にならない組み合わせを探す（標準的な入れ替え手順）
+// 5. 全体の人数が奇数のときは、最初に1人だけbye（不戦敗にはしない）にしてから
+//    残り偶数人数で上記の処理を行う
+function generatePairing(igoIds, rounds) {
+  const { wins } = igoScores(rounds);
+  const played = playedPairSet(rounds);
+  const byes = priorByeIds(rounds);
+
+  let pool = [...igoIds];
+  let byeId = null;
+  if (pool.length % 2 === 1) {
+    // 成績の低い順に見て、まだbyeを経験していない人を優先してbyeにする
+    const byOrder = [...pool].sort((a, b) => (wins[a]||0) - (wins[b]||0));
+    for (const id of byOrder) { if (!byes.has(id)) { byeId = id; break; } }
+    if (!byeId) byeId = byOrder[0];
+    pool = pool.filter(id => id !== byeId);
+  }
+
+  const scoreGroups = {};
+  pool.forEach(id => {
+    const w = wins[id] || 0;
+    (scoreGroups[w] = scoreGroups[w] || []).push(id); // グループ内は表の並び順のまま
+  });
+  const scores = Object.keys(scoreGroups).map(Number).sort((a, b) => b - a);
+
+  let matches = [];
+  let floater = null; // 直前のグループから降格してきた1人
+  scores.forEach(score => {
+    let group = floater ? [floater, ...scoreGroups[score]] : [...scoreGroups[score]];
+    floater = null;
+    if (group.length % 2 === 1) {
+      floater = group[group.length - 1]; // 並び順で一番後ろの人を次のグループへ降格
+      group = group.slice(0, -1);
+    }
+    matches = matches.concat(crossPairGroup(group, played));
+  });
+  // pool全体は偶数なので、最後にfloaterが残ることはない
+
+  if (byeId) matches.push({ a: byeId, b: null, winner: "bye" });
+  return matches;
+}
+
+// 偶数人数のグループを上位半分・下位半分に分け、上位i番目×下位i番目でクロスに組む。
+// 標準位置が対戦済みの場合は、下位半分の中で近い位置から順に相手をずらして再戦を避ける
+// （それでも見つからなければ、仕方なく標準位置の相手のまま組む）。
+function crossPairGroup(group, played) {
+  const half = group.length / 2;
+  const upper = group.slice(0, half);
+  const lower = group.slice(half);
+  const usedLower = new Set();
+  const matches = [];
+  for (let i = 0; i < upper.length; i++) {
+    const a = upper[i];
+    const order = [i];
+    for (let d = 1; d < lower.length; d++) {
+      if (i + d < lower.length) order.push(i + d);
+      if (i - d >= 0) order.push(i - d);
+    }
+    let opp = null;
+    for (const idx of order) {
+      const b = lower[idx];
+      if (usedLower.has(b)) continue;
+      if (!played.has(pairKey(a, b))) { opp = b; break; }
+    }
+    if (!opp) { // 再戦回避できない場合は仕方なく候補の中から一番近い相手にする
+      for (const idx of order) {
+        const b = lower[idx];
+        if (!usedLower.has(b)) { opp = b; break; }
+      }
+    }
+    usedLower.add(opp);
+    matches.push({ a, b: opp, winner: null });
+  }
+  return matches;
+}
+
+function roundComplete(round) {
+  return round.every(m => m.winner);
+}
+
+let igoActiveRoundIdx = 0;
+
+function renderIgoTab() {
+  const el = document.getElementById("igo-content");
+  if (!el) return;
+  const igoIds = igoParticipantIds();
+
+  if (igoIds.length === 0) {
+    el.innerHTML = `<p class="note" style="margin:0">⚙️設定タブで、今回の合宿の囲碁参加者を選んでください。</p>`;
+    return;
+  }
+  if (!state.igoRounds) {
+    el.innerHTML = `<p class="note" style="margin:0">⚙️設定タブで、囲碁の回戦数を確定してください。</p>`;
+    return;
+  }
+
+  const rounds = state.igoResults || [];
+  if (igoActiveRoundIdx > rounds.length) igoActiveRoundIdx = rounds.length;
+
+  // 対局者×回戦のマス目表（一覧表示）。行の並びは「今回の合宿設定」で決めた
+  // 参加者の並びに固定し、結果を入力しても動かさない。順位は別途算出して数字だけ差し替える。
+  const fixedOrderList = buildIgoMatrixList(igoIds, rounds);
+  let html = `<p class="note" style="margin-top:0">〇＝勝ち／●＝負け／…＝結果待ち／－＝その回戦は未生成、を表します。</p>`;
+  html += igoMatrixTableHTML(fixedOrderList, rounds, state.igoRounds);
+
+  // 結果入力（回戦タブ＋対局カード）
+  html += `<h3 style="margin-top:22px">結果を入力</h3>`;
+  html += `<div id="igo-round-tabs">`;
+  for (let i = 0; i < state.igoRounds; i++) {
+    const done = rounds[i] && roundComplete(rounds[i]);
+    html += `<button type="button" class="round-tab-btn ${i===igoActiveRoundIdx?"active":""} ${done?"done":""}" data-round="${i}">第${i+1}回戦</button>`;
+  }
+  html += `</div>`;
+
+  const idx = igoActiveRoundIdx;
+  if (idx < rounds.length) {
+    const round = rounds[idx];
+    const isPastRound = idx < rounds.length - 1;
+    if (isPastRound) html += `<p class="note" style="margin-top:0">この回戦を修正すると、第${idx+2}回戦以降の組み合わせは自動的に消去されます（組み直しが必要になります）。</p>`;
+    html += round.map((m, mi) => matchCardHTML(m, idx, mi, false)).join("");
+  } else if (idx === rounds.length) {
+    const prevOk = idx === 0 || roundComplete(rounds[idx - 1]);
+    if (prevOk) {
+      html += `<button class="btn" id="igo-gen-round">第${idx+1}回戦の組み合わせを作る</button>`;
+    } else {
+      html += `<p class="note" style="margin-top:0">前の回戦の結果がまだ揃っていません。全試合の結果を入力すると、この回戦が組めるようになります。</p>`;
+    }
+  }
+
+  el.innerHTML = html;
+
+  el.querySelectorAll(".round-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => { igoActiveRoundIdx = Number(btn.dataset.round); renderIgoTab(); });
+  });
+  const genBtn = document.getElementById("igo-gen-round");
+  if (genBtn) genBtn.addEventListener("click", () => {
+    const newRound = generatePairing(igoIds, state.igoResults || []);
+    state.igoResults = [...(state.igoResults || []), newRound];
+    pushState();
+    showToast(`第${state.igoResults.length}回戦の組み合わせを作りました`);
+    renderIgoTab();
+  });
+  el.querySelectorAll(".match-side[data-round]").forEach(sideEl => {
+    sideEl.addEventListener("click", () => {
+      const ri = Number(sideEl.dataset.round), mi = Number(sideEl.dataset.match), side = sideEl.dataset.side;
+      setIgoWinner(ri, mi, side);
+    });
+  });
+}
+
+function matchCardHTML(m, roundIdx, matchIdx) {
+  if (m.b === null) {
+    return `<div class="match-card"><div class="match-bye">${escapeHtml(roster[m.a]?.name || "")}　この回戦はお休み（不戦敗にはなりません）</div></div>`;
+  }
+  const nameA = escapeHtml(roster[m.a]?.name || "");
+  const nameB = escapeHtml(roster[m.b]?.name || "");
+  const winA = m.winner === "a", winB = m.winner === "b";
+  const sideAttrs = ` data-round="${roundIdx}" data-match="${matchIdx}"`;
+  const sideCls = (extra) => `match-side ${extra}`;
+  return `<div class="match-card">
+    <div class="${sideCls(winA?"winner":"")}"${sideAttrs} data-side="a">${winA?"👑 ":""}${nameA}</div>
+    <div class="match-vs">vs</div>
+    <div class="${sideCls(winB?"winner":"")}"${sideAttrs} data-side="b">${winB?"👑 ":""}${nameB}</div>
+  </div>`;
+}
+
+function setIgoWinner(roundIdx, matchIdx, side) {
+  const m = state.igoResults[roundIdx][matchIdx];
+  if (m.winner === side) return;
+  const isPastRound = roundIdx < state.igoResults.length - 1;
+  let msg = null;
+  if (isPastRound) {
+    msg = `第${roundIdx+1}回戦の結果を変更します。第${roundIdx+2}回戦以降はこの変更を反映していないため、自動的に組み合わせを消去します（あとで組み直してください）。よろしいですか？`;
+  } else if (m.winner) {
+    msg = "すでに決まっている結果を変更しますか？";
+  }
+  if (msg && !confirm(msg)) return;
+  m.winner = side;
+  if (isPastRound) {
+    state.igoResults = state.igoResults.slice(0, roundIdx + 1);
+    if (igoActiveRoundIdx > roundIdx) igoActiveRoundIdx = roundIdx;
+  }
+  pushState();
+  renderIgoTab();
+  renderSogoTab();
+}
+
+// マス目表用に「今回の合宿設定（またはアーカイブ時点）の参加者の並び」に固定した
+// リストを作る。各行には算出済みの順位（rank）を持たせる（行の位置とは独立）。
+// 今回の合宿・アーカイブ済みの合宿の両方の囲碁マス目表から共通で使う。
+function buildIgoMatrixList(igoIds, rounds) {
+  const standings = computeIgoStandings(igoIds, rounds);
+  const rankById = {};
+  standings.forEach((p, i) => { rankById[p.id] = i + 1; });
+  return igoIds.map(id => {
+    const s = standings.find(p => p.id === id);
+    return { id, name: roster[id]?.name || "", w: s ? s.w : 0, l: s ? s.l : 0, bh: s ? s.bh : 0, rank: rankById[id] || null };
+  });
+}
+
+// 順位算出：勝数 → 直接対決 → Buchholz（対戦相手の勝数合計）→ 名前の五十音順（機械的基準）
+function computeIgoStandings(igoIds, rounds) {
+  const { wins, losses } = igoScores(rounds);
+  const opponents = {};
+  igoIds.forEach(id => opponents[id] = []);
+  rounds.forEach(round => round.forEach(m => {
+    if (m.b === null || !m.winner || m.winner === "bye") return;
+    opponents[m.a] = opponents[m.a] || []; opponents[m.a].push(m.b);
+    opponents[m.b] = opponents[m.b] || []; opponents[m.b].push(m.a);
+  }));
+  const buchholz = id => (opponents[id]||[]).reduce((s, opp) => s + (wins[opp]||0), 0);
+  function directResult(x, y) {
+    for (const round of rounds) {
+      for (const m of round) {
+        if (m.b === null || !m.winner || m.winner === "bye") continue;
+        if (m.a === x && m.b === y) return m.winner === "a" ? -1 : 1;
+        if (m.a === y && m.b === x) return m.winner === "b" ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+  const list = igoIds.map((id, i) => ({
+    id, idx: i, name: roster[id]?.name || "", w: wins[id]||0, l: losses[id]||0, bh: buchholz(id)
+  }));
+  list.sort((x, y) => {
+    if (y.w !== x.w) return y.w - x.w;
+    const d = directResult(x.id, y.id);
+    if (d !== 0) return d;
+    if (y.bh !== x.bh) return y.bh - x.bh;
+    return x.idx - y.idx; // 完全に並んだら「今回の合宿設定」で決めた参加者の並び順にする
+  });
+  return list;
+}
+
+// 対局者×回戦のマス目表（横スクロール）。各マスには対戦相手と勝敗（○/●）、
+// 未決着なら「…」、回戦未生成なら「－」、その回戦がお休みなら「お休み」を表示する。
+// 行の並びは「今回の合宿設定」で決めた参加者の並びに固定（結果を入力しても行は動かさない）。
+// 順位（左端）だけを勝数→直接対決→Buchholzで算出して差し替える。
+function igoMatrixCell(id, roundIdx, rounds) {
+  const round = rounds[roundIdx];
+  if (!round) return `<td class="igo-cell-empty">－</td>`;
+  const m = round.find(mm => mm.a === id || mm.b === id);
+  if (!m) return `<td class="igo-cell-empty">－</td>`;
+  if (m.b === null) return `<td class="igo-cell-pending">お休み</td>`;
+  const isA = m.a === id;
+  const oppName = escapeHtml(roster[isA ? m.b : m.a]?.name || "");
+  if (m.winner === "a" || m.winner === "b") {
+    const won = (isA && m.winner === "a") || (!isA && m.winner === "b");
+    return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="${won?"igo-cell-win":"igo-cell-loss"}">${won?"○":"●"}</div></td>`;
+  }
+  return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="igo-cell-pending">…</div></td>`;
+}
+
+function igoMatrixTableHTML(list, rounds, roundCount) {
+  if (list.length === 0) return `<p style="color:#999;font-size:0.88rem">対局結果がまだありません。</p>`;
+  // 1局も決着していないうちは、まだ実力差が出ていないのに順位がついて見えるのがおかしいため、
+  // 順位列は「－」にしておく。行の並びは常に「今回の合宿設定」で決めた参加者の順で固定。
+  const anyDecided = list.some(p => p.w > 0 || p.l > 0);
+  const medals = ["🥇","🥈","🥉"];
+  let head = `<tr><th>順位</th><th>対局者</th>`;
+  for (let i = 0; i < roundCount; i++) head += `<th>第${i+1}<br>回戦</th>`;
+  head += `<th>成績</th></tr>`;
+  const rows = list.map(p => {
+    const rankCell = anyDecided ? (medals[p.rank - 1] || p.rank) : "－";
+    let row = `<tr><td>${rankCell}</td><td style="text-align:left;white-space:nowrap">${escapeHtml(p.name)}</td>`;
+    for (let r = 0; r < roundCount; r++) row += igoMatrixCell(p.id, r, rounds);
+    const bhLabel = (p.w > 0 || p.l > 0) ? `<br><span style="font-size:0.62rem;color:#999">BH${p.bh}</span>` : "";
+    row += `<td style="white-space:nowrap">${p.w}勝${p.l}敗${bhLabel}</td></tr>`;
+    return row;
+  }).join("");
+  const bhNote = anyDecided ? `<details style="margin-top:6px"><summary class="sogo-table-toggle">BH（ブフホルツ）とは？</summary>
+    <p class="note" style="margin-top:8px">
+      BHは「これまで対戦した相手の勝数を、全部足した数字」です。<br><br>
+      同じ勝数の人が並んだとき、勝数だけでは順位が決まりません。そこで
+      「対戦した相手がどれだけ勝っていたか」を見て、より勝っている相手と
+      対戦していた人を上位にする、という考え方です。強い相手（勝数の多い
+      相手）と対戦していた人ほどBHの数字が大きくなり、同成績のときに
+      上の順位になります。<br><br>
+      スイス式トーナメントで昔から使われている、公式な順位の決め方の1つです。
+      順位は「①勝数 → ②直接対決の結果 → ③BH」の順で比較して決めています。
+    </p>
+  </details>` : "";
+  return `<div class="matrix-wrap"><table>${head}${rows}</table></div>${bhNote}`;
+}
+
+// ============================================================
+//  重み設定
+// ============================================================
+function fillWeightInputs() {
+  const igoEl  = document.getElementById("weight-igo");
+  const mjEl   = document.getElementById("weight-mahjong");
+  const rateEl = document.getElementById("mj-chip-rate");
+  if (!igoEl || !mjEl || !rateEl) return;
+  igoEl.value  = state.weights.igo;
+  mjEl.value   = state.weights.mahjong;
+  rateEl.value = state.chipRate;
+}
+["weight-igo", "weight-mahjong", "mj-chip-rate"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("focus", () => editingWeights = true);
+  el.addEventListener("blur",  () => editingWeights = false);
+});
+document.getElementById("save-weights").addEventListener("click", () => {
+  const igoW  = parseFloat(document.getElementById("weight-igo").value);
+  const mjW   = parseFloat(document.getElementById("weight-mahjong").value);
+  const rateW = parseFloat(document.getElementById("mj-chip-rate").value);
+  state.weights = {
+    igo:     isNaN(igoW) ? 1 : igoW,
+    mahjong: isNaN(mjW) ? 1 : mjW
+  };
+  state.chipRate = isNaN(rateW) ? 1 : rateW;
+  editingWeights = false;
+  pushState();
+  renderMahjongTab();
+  renderSogoTab();
+  showToast("重み・レートを保存し、全員に同期しました！");
+});
+
+// ============================================================
+//  シーズン管理
+// ============================================================
+function renderSeasonInfo() {
+  const el = document.getElementById("season-info");
+  if (el) el.textContent = `現在：シーズン ${state.season}`;
+
+  const pastEl = document.getElementById("past-seasons");
+  if (!pastEl || !seasonsRef) return;
+  seasonsRef.once("value", snap => {
+    const data = snap.val();
+    if (!data) { pastEl.innerHTML = ""; return; }
+    const seasons = Object.values(data).sort((a, b) => b.season - a.season);
+    pastEl.innerHTML = `
+      <p style="font-size:0.85rem;font-weight:bold;color:#2c3e50;margin-bottom:8px">過去のシーズン</p>
+      ${seasons.map(s => `
+        <div style="background:#f1f0ea;border:1px solid #e0dbcd;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:0.85rem">
+          <strong>シーズン ${s.season}</strong>（終了：${escapeHtml(s.endDate || "")}）<br>
+          <span style="color:#666">重み：囲碁${s.weights?.igo ?? 1} ／ 麻雀${s.weights?.mahjong ?? 1} ／ チップレート${s.chipRate ?? 1}</span>
+        </div>`).join("")}`;
+  });
+}
+
+document.getElementById("season-end-btn").addEventListener("click", () => {
+  if (!confirm(`シーズン${state.season}を終えて、次のシーズンを始めます。\n現在の重み（囲碁${state.weights.igo}／麻雀${state.weights.mahjong}）とチップレート（${state.chipRate}）がこのシーズンの記録として保存されます。\nよろしいですか？`)) return;
+  if (seasonsRef) {
+    const now = new Date();
+    const endDate = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()}`;
+    seasonsRef.child(String(state.season)).set({
+      season: state.season,
+      weights: { ...state.weights },
+      chipRate: state.chipRate,
+      endDate
+    });
+  }
+  state.season = (state.season || 1) + 1;
+  // 重み・チップレートの値はそのまま引き継ぐ（次のシーズンで調整したければ設定から変更する）
+  pushState();
+  renderSeasonInfo();
+  showToast(`シーズン${state.season - 1}を終え、シーズン${state.season}を開始しました。`);
+});
+
+// ============================================================
+//  結果のリセット／完全リセット
+// ============================================================
+document.getElementById("reset-results-btn").addEventListener("click", () => {
+  if (!confirm("今回の合宿の対局結果（囲碁・麻雀とも）をすべて消去します。参加者・回戦数の設定はそのまま残ります。よろしいですか？")) return;
+  state.igoResults = [];
+  state.mahjongResults = [];
+  igoActiveRoundIdx = 0;
+  mjRankInputDirty = false;
+  pushState();
+  renderIgoTab();
+  renderMahjongTab();
+  renderSogoTab();
+  showToast("結果をリセットしました");
+});
+
+document.getElementById("full-reset-btn").addEventListener("click", () => {
+  if (!confirm("今回の合宿設定・対局結果・シーズン番号・重み・📚過去の合宿アーカイブ・過去のシーズン記録をすべて消去して最初の状態に戻します（対局者名簿は保持されます）。\nこの操作は取り消せません。本当によいですか？")) return;
+  if (archiveRef) archiveRef.remove();
+  if (seasonsRef) seasonsRef.remove();
+  state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1 };
+  igoActiveRoundIdx = 0;
+  mjRankInputDirty = false;
+  pushState();
+  fillSetupInputs();
+  fillWeightInputs();
+  renderIgoTab();
+  renderMahjongTab();
+  renderSogoTab();
+  renderSeasonInfo();
+  archiveShowAll = false;
+  renderArchiveTab();
+  showToast("完全リセットしました。");
+});
+
+// ============================================================
+//  データエクスポート
+// ============================================================
+document.getElementById("export-btn").addEventListener("click", () => {
+  if (!isConfigured) { showToast("データベースに接続されていません"); return; }
+  firebase.database().ref("gasshuku").once("value", snap => {
+    const data = snap.val();
+    if (!data) { showToast("エクスポートするデータがありません"); return; }
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `gasshuku_backup_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("エクスポートしました");
+  });
+});
+
+// ============================================================
+//  麻雀（回ごとの自由対局記録）
+// ============================================================
+// 対象は「今回の合宿設定」で麻雀ON・かつ現在も名簿に存在する参加者。
+// 半チャンごとに、その中から卓の4人を選んで記録する（入れ替わり・抜け番に対応）。
+function mahjongParticipantIds() {
+  return state.participants.filter(p => p.mahjong && roster[p.id]).map(p => p.id);
+}
+
+const MJ_RANK_LABELS = ["👑 1位", "🥈 2位", "🥉 3位", "4位"];
+let mjRankInputDirty = false;
+
+function renderMahjongTab() {
+  const el = document.getElementById("mahjong-content");
+  if (!el) return;
+  const mjIds = mahjongParticipantIds();
+
+  if (mjIds.length < 4) {
+    el.innerHTML = `<p class="note" style="margin:0">⚙️設定タブで、今回の合宿の麻雀参加者を4人以上選んでください。</p>`;
+    el.dataset.built = "";
+    return;
+  }
+
+  // 骨組みは初回だけ作る。以降は中身（順位・履歴）だけ差し替え、入力中のフォームは
+  // mjRankInputDirtyがtrueの間は触らない（他の参加者の更新で入力中の内容が消えるのを防ぐ）。
+  if (!el.dataset.built) {
+    el.innerHTML = `
+      <p class="note" style="margin-top:0">半チャンのたびに、卓に座った4人を選んで結果を記録します。参加者の中から毎回自由に選べます（入れ替わり・抜け番OK）。</p>
+      <div id="mj-rank-inputs"></div>
+      <button class="btn" id="mj-add-match" style="background:#2c3e50">登録する</button>
+      <h3 style="margin-top:24px">今回の合宿の麻雀順位</h3>
+      <div id="mj-standings"></div>
+      <h3 style="margin-top:24px">対局履歴</h3>
+      <div id="mj-history"></div>`;
+    el.dataset.built = "1";
+    document.getElementById("mj-add-match").addEventListener("click", () => onMjAddMatch(mahjongParticipantIds()));
+  }
+
+  if (!mjRankInputDirty) buildMjRankInputs(mjIds);
+  document.getElementById("mj-standings").innerHTML = mjStandingsHTML(mjIds);
+  const histEl = document.getElementById("mj-history");
+  histEl.innerHTML = mjHistoryHTML();
+  histEl.querySelectorAll(".mj-hist-del-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      if (!confirm("この対局記録を削除しますか？")) return;
+      deleteMjMatchWithUndo(idx);
+    });
+  });
+  histEl.querySelectorAll(".mj-hist-edit-btn").forEach(btn => {
+    btn.addEventListener("click", () => openMjEditModal(Number(btn.dataset.idx)));
+  });
+}
+
+// ---------- 麻雀：削除＋Undo ----------
+let mjToastTimer = null;
+let mjUndoTimer = null;
+let pendingMjDelete = null; // { idx, record }
+
+function deleteMjMatchWithUndo(idx) {
+  pendingMjDelete = { idx, record: state.mahjongResults[idx] };
+  state.mahjongResults.splice(idx, 1);
+  pushState(); // 即座にFirebaseへ反映（他の参加者の更新との競合を避けるため）
+  renderMahjongTab();
+  renderSogoTab();
+
+  const el = document.getElementById("toast");
+  document.getElementById("toast-msg").textContent = "削除しました";
+  document.getElementById("toast-undo").style.display = "inline-block";
+  el.style.display = "flex";
+  if (toastTimer) clearTimeout(toastTimer);
+  if (mjUndoTimer) clearTimeout(mjUndoTimer);
+  mjUndoTimer = setTimeout(() => {
+    el.style.display = "none";
+    pendingMjDelete = null;
+  }, 10000);
+}
+
+document.getElementById("toast-undo").addEventListener("click", () => {
+  if (!pendingMjDelete) return;
+  state.mahjongResults.splice(pendingMjDelete.idx, 0, pendingMjDelete.record);
+  pendingMjDelete = null;
+  if (mjUndoTimer) clearTimeout(mjUndoTimer);
+  pushState();
+  renderMahjongTab();
+  renderSogoTab();
+  showToast("元に戻しました");
+});
+
+// ---------- 麻雀：記録の修正 ----------
+let mjEditTargetIdx = -1;
+
+function openMjEditModal(idx) {
+  const m = state.mahjongResults[idx];
+  if (!m) return;
+  mjEditTargetIdx = idx;
+  const wrap = document.getElementById("mj-edit-players-wrap");
+  wrap.innerHTML = m.players.map((pid, i) => `
+    <div style="margin-top:10px;border:1px solid #e0dbcd;border-radius:8px;padding:10px">
+      <div style="font-size:0.8rem;color:#888;margin-bottom:6px">${escapeHtml(roster[pid]?.name || "")}</div>
+      <div style="display:flex;gap:8px">
+        <div class="fg" style="flex:1;margin:0"><label>ポイント</label><input type="number" step="any" id="mj-edit-pt-${i}" value="${m.points[i]}"></div>
+        <div class="fg" style="flex:1;margin:0"><label>チップ</label><input type="number" step="any" id="mj-edit-chip-${i}" value="${m.chips ? m.chips[i] : 0}"></div>
+      </div>
+    </div>`).join("");
+  document.getElementById("mj-edit-modal").style.display = "block";
+}
+
+document.getElementById("mj-edit-save").addEventListener("click", () => {
+  if (mjEditTargetIdx < 0) return;
+  const m = state.mahjongResults[mjEditTargetIdx];
+  m.players.forEach((pid, i) => {
+    const pt = parseFloat(document.getElementById(`mj-edit-pt-${i}`).value);
+    const chip = parseFloat(document.getElementById(`mj-edit-chip-${i}`).value);
+    if (!isNaN(pt)) m.points[i] = pt;
+    if (!isNaN(chip)) { m.chips = m.chips || [0,0,0,0]; m.chips[i] = chip; }
+  });
+  pushState();
+  document.getElementById("mj-edit-modal").style.display = "none";
+  mjEditTargetIdx = -1;
+  renderMahjongTab();
+  renderSogoTab();
+  showToast("修正しました");
+});
+
+document.getElementById("mj-edit-cancel").addEventListener("click", () => {
+  document.getElementById("mj-edit-modal").style.display = "none";
+  mjEditTargetIdx = -1;
+});
+
+document.getElementById("mj-edit-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("mj-edit-modal")) {
+    document.getElementById("mj-edit-modal").style.display = "none";
+    mjEditTargetIdx = -1;
+  }
+});
+
+function buildMjRankInputs(mjIds) {
+  mjRankInputDirty = false;
+  const container = document.getElementById("mj-rank-inputs");
+  if (!container) return;
+  const options = mjIds.map(id => `<option value="${id}">${escapeHtml(roster[id]?.name || "")}</option>`).join("");
+  container.innerHTML = MJ_RANK_LABELS.map((label, r) => {
+    const isTop = r === 0;
+    return `
+      <div class="mj-rank-input-row ${isTop ? "top-auto-row" : ""}">
+        <span class="mj-ri-label">${label}</span>
+        <select class="mj-ri-select" id="mj-ri-player-${r}">${options}</select>
+        <div class="mj-ri-val-wrap">
+          <span class="mj-ri-val-title">ポイント</span>
+          <div class="mj-ri-input-box">
+            <input type="text" inputmode="numeric" pattern="[0-9-.]*" class="mj-ri-pt-input" id="mj-ri-pt-${r}"
+              placeholder="0" ${isTop ? "readonly" : `oninput="mjRankInputDirty = true; recalcMjTopScore()"`}>
+            <button class="mj-sign-toggle-btn ${isTop ? "hidden" : ""}" onclick="toggleMjSign('mj-ri-pt-${r}')">±</button>
+          </div>
+        </div>
+        <div class="mj-ri-val-wrap">
+          <span class="mj-ri-val-title">チップ</span>
+          <div class="mj-ri-input-box">
+            <input type="text" inputmode="numeric" pattern="[0-9-]*" class="mj-ri-chip-input" id="mj-ri-chip-${r}"
+              placeholder="0" ${isTop ? "readonly" : `oninput="mjRankInputDirty = true; recalcMjTopScore()"`}>
+            <button class="mj-sign-toggle-btn ${isTop ? "hidden" : ""}" onclick="toggleMjSign('mj-ri-chip-${r}')">±</button>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+  // デフォルトで異なる4人が選ばれるよう、選択肢の順にずらして初期値を入れる
+  [0,1,2,3].forEach(r => {
+    const sel = document.getElementById(`mj-ri-player-${r}`);
+    if (sel && mjIds[r]) sel.value = mjIds[r];
+    if (sel) sel.addEventListener("change", () => mjRankInputDirty = true);
+  });
+  recalcMjTopScore();
+}
+
+function toggleMjSign(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const v = el.value.trim();
+  if (v === "" || v === "0") return;
+  el.value = v.startsWith("-") ? v.substring(1) : "-" + v;
+  mjRankInputDirty = true;
+  recalcMjTopScore();
+}
+
+function mjParseVal(str) {
+  const t = (str || "").trim();
+  if (t === "" || t === "-") return 0;
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
+}
+
+function recalcMjTopScore() {
+  const pt1 = document.getElementById("mj-ri-pt-1");
+  if (!pt1) return;
+  const p2 = mjParseVal(document.getElementById("mj-ri-pt-1").value);
+  const p3 = mjParseVal(document.getElementById("mj-ri-pt-2").value);
+  const p4 = mjParseVal(document.getElementById("mj-ri-pt-3").value);
+  const c2 = mjParseVal(document.getElementById("mj-ri-chip-1").value);
+  const c3 = mjParseVal(document.getElementById("mj-ri-chip-2").value);
+  const c4 = mjParseVal(document.getElementById("mj-ri-chip-3").value);
+  const topPt = Number((-(p2 + p3 + p4)).toFixed(2));
+  const topCp = Number((-(c2 + c3 + c4)).toFixed(2));
+  document.getElementById("mj-ri-pt-0").value = topPt === 0 ? "" : topPt;
+  document.getElementById("mj-ri-chip-0").value = topCp === 0 ? "" : topCp;
+}
+
+function onMjAddMatch(mjIds) {
+  const playerIds = [0,1,2,3].map(r => document.getElementById(`mj-ri-player-${r}`).value);
+  if (new Set(playerIds).size !== 4) { showToast("同じ人が複数の順位に選ばれています"); return; }
+
+  const ptsRaw = [1,2,3].map(r => document.getElementById(`mj-ri-pt-${r}`).value.trim());
+  const cpsRaw = [1,2,3].map(r => document.getElementById(`mj-ri-chip-${r}`).value.trim());
+  if (ptsRaw.some(v => v === "-") || cpsRaw.some(v => v === "-")) {
+    showToast("ポイントまたはチップの入力が不完全です（マイナス符号のみの欄があります）"); return;
+  }
+
+  const points = [0,1,2,3].map(r => mjParseVal(document.getElementById(`mj-ri-pt-${r}`).value));
+  const chips  = [0,1,2,3].map(r => mjParseVal(document.getElementById(`mj-ri-chip-${r}`).value));
+
+  state.mahjongResults = [...state.mahjongResults, { players: playerIds, points, chips }];
+  pushState();
+  mjRankInputDirty = false;
+  showToast("結果を登録しました！");
+  renderMahjongTab();
+  renderSogoTab();
+}
+
+// その半チャンの総合値（対局pt＋チップ換算pt）を返す（順位判定・順位表で共通利用）
+function mjMatchOverall(m, chipRate) {
+  return m.points.map((pt, i) => pt + (m.chips ? (m.chips[i] || 0) : 0) * chipRate);
+}
+
+function mjFmtPt(pt) {
+  if (pt > 0) return `+${pt}`;
+  if (pt < 0) return `${pt}`;
+  return "±0";
+}
+function mjPtClass(pt) { return pt > 0 ? "mj-pt-pos" : pt < 0 ? "mj-pt-neg" : "mj-pt-zero"; }
+
+// 麻雀順位：総合ポイント（対局pt＋チップ換算pt）の合計順。
+// results/chipRateを明示的に渡すことで、今回の合宿にもアーカイブ済みの合宿にも使う。
+function computeMjStandings(mjIds, results, chipRate) {
+  const totals = {}, chipTotals = {}, games = {}, rankCnt = {1:{},2:{},3:{},4:{}};
+  mjIds.forEach(id => { totals[id]=0; chipTotals[id]=0; games[id]=0; [1,2,3,4].forEach(r=>rankCnt[r][id]=0); });
+
+  (results || []).forEach(m => {
+    const overall = mjMatchOverall(m, chipRate);
+    const order = overall.map((v,i)=>({i,v})).sort((a,b)=>b.v-a.v);
+    m.players.forEach((pid, i) => {
+      if (!(pid in totals)) { totals[pid]=0; chipTotals[pid]=0; games[pid]=0; [1,2,3,4].forEach(r=>rankCnt[r][pid]=rankCnt[r][pid]||0); }
+      totals[pid] += m.points[i] || 0;
+      chipTotals[pid] += (m.chips ? (m.chips[i]||0) : 0);
+      games[pid]++;
+    });
+    order.forEach((o, idx) => {
+      const pid = m.players[o.i];
+      rankCnt[idx+1][pid] = (rankCnt[idx+1][pid]||0) + 1;
+    });
+  });
+
+  const allIds = [...new Set([...mjIds, ...Object.keys(totals)])];
+  const data = allIds.map(id => {
+    const purePt = Number((totals[id]||0).toFixed(4));
+    const chips  = Number((chipTotals[id]||0).toFixed(4));
+    const overall = Number((purePt + chips * chipRate).toFixed(2));
+    return { id, name: roster[id]?.name || "", overall, purePt, chipPt: Number((chips*chipRate).toFixed(2)), games: games[id]||0,
+      c1: rankCnt[1][id]||0, c2: rankCnt[2][id]||0, c3: rankCnt[3][id]||0, c4: rankCnt[4][id]||0 };
+  });
+  data.sort((a,b) => b.overall - a.overall);
+  return data;
+}
+
+// 麻雀順位表のHTML（計算済みのdata配列を渡す。今回の合宿・アーカイブ表示の両方から使う）
+function mjStandingsListHTML(data) {
+  if (data.length === 0 || data.every(p => p.games === 0)) return `<p style="color:#999;font-size:0.88rem">まだ対局がありません。</p>`;
+  const medals = ["🥇","🥈","🥉"];
+  return data.map((p, i) => `
+    <div class="mj-rank-row">
+      <div class="mj-rank-num">${medals[i] || (i+1)}</div>
+      <div class="mj-rank-info">
+        <div class="mj-rank-name">${escapeHtml(p.name)}</div>
+        <div class="mj-rank-sub">${p.games}回 ／ 👑${p.c1} 🥈${p.c2} 🥉${p.c3} <span style="opacity:0.7">4位:${p.c4}</span></div>
+      </div>
+      <div class="mj-rank-score">
+        <div class="mj-rank-score-val ${mjPtClass(p.overall)}">${mjFmtPt(p.overall)}</div>
+        <div style="font-size:0.68rem;color:#999">対局${mjFmtPt(p.purePt)} ／ 🪙${mjFmtPt(p.chipPt)}</div>
+      </div>
+    </div>`).join("");
+}
+
+function mjStandingsHTML(mjIds) {
+  return mjStandingsListHTML(computeMjStandings(mjIds, state.mahjongResults, state.chipRate));
+}
+
+// 麻雀対局履歴のHTML（resultsを明示的に渡す。今回の合宿・アーカイブ表示の両方から使う）
+function mjHistoryListHTML(results, opts) {
+  const showDelete = opts && opts.showDelete;
+  const chipRate = (opts && typeof opts.chipRate === "number") ? opts.chipRate : state.chipRate;
+  const nameFallback = opts && opts.nameFallback;
+  if (!results || results.length === 0) {
+    return `<p style="color:#999;font-size:0.88rem">まだ対局がありません。</p>`;
+  }
+  return results.map((m, idx) => idx).reverse().map(idx => {
+    const m = results[idx];
+    const overall = mjMatchOverall(m, chipRate);
+    const order = overall.map((v,i)=>({i,v})).sort((a,b)=>b.v-a.v);
+    const rankOf = {};
+    order.forEach((o, ri) => rankOf[o.i] = ri + 1);
+    const boxes = m.players.map((pid, i) => {
+      const rank = rankOf[i];
+      const badge = rank === 1 ? "👑" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : "4位";
+      const pname = nameFallback ? resolveName(pid, nameFallback) : (roster[pid]?.name || "");
+      return `<div class="mj-hist-player-box">
+        <span>${badge}</span>
+        <span class="mj-hist-name-cell" title="${escapeHtml(pname)}">${escapeHtml(pname)}</span>
+        <span class="mj-hist-pt-cell ${mjPtClass(m.points[i])}">${mjFmtPt(m.points[i])}</span>
+        <span class="mj-hist-chip-cell ${mjPtClass(m.chips?m.chips[i]:0)}">${(m.chips&&m.chips[i]>0)?"+":""}${m.chips?m.chips[i]:0}</span>
+      </div>`;
+    }).join("");
+    const editBtn = showDelete ? `<button class="mj-hist-edit-btn" data-idx="${idx}">修正</button>` : "";
+    const delBtn = showDelete ? `<button class="mj-hist-del-btn" data-idx="${idx}">削除</button>` : "";
+    return `<div class="mj-hist-item">
+      <div class="mj-hist-grid">${boxes}</div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">${editBtn}${delBtn}</div>
+    </div>`;
+  }).join("");
+}
+
+function mjHistoryHTML() {
+  return mjHistoryListHTML(state.mahjongResults, { showDelete: true, chipRate: state.chipRate });
+}
+
+// ============================================================
+//  総合（囲碁ポイント×重み＋麻雀ポイント×重み）
+// ============================================================
+// 固定配点表（1〜14位）。キリの良い数字を優先し、下位ほど差を詰めている。
+// 15位以下の配点は未定（今後の課題）。
+const SOGO_POINT_TABLE = [100,80,60,50,40,30,25,20,16,13,10,7,4,2];
+function sogoPointsForRank(rank) {
+  if (rank >= 1 && rank <= SOGO_POINT_TABLE.length) return SOGO_POINT_TABLE[rank - 1];
+  return 0;
+}
+
+// 囲碁：id -> { rank, points }（決着済みの対局が1つも無ければ空マップ＝まだ得点なし）
+// igoIds/roundsを明示的に渡すことで、今回の合宿にもアーカイブ済みの合宿にも使う。
+function computeIgoRankPointsMap(igoIds, rounds) {
+  const anyDecided = (rounds || []).some(round => round.some(m => m.winner && m.winner !== "bye"));
+  const map = {};
+  if (!anyDecided || igoIds.length === 0) return map;
+  computeIgoStandings(igoIds, rounds).forEach((p, i) => { map[p.id] = { rank: i + 1, points: sogoPointsForRank(i + 1) }; });
+  return map;
+}
+
+// 麻雀：id -> { rank, points }（対局記録が1つも無ければ空マップ＝まだ得点なし）
+// mjIds/results/chipRateを明示的に渡すことで、今回の合宿にもアーカイブ済みの合宿にも使う。
+function computeMahjongRankPointsMap(mjIds, results, chipRate) {
+  const map = {};
+  if (mjIds.length < 4 || !results || results.length === 0) return map;
+  computeMjStandings(mjIds, results, chipRate).filter(p => p.games > 0).forEach((p, i) => { map[p.id] = { rank: i + 1, points: sogoPointsForRank(i + 1) }; });
+  return map;
+}
+
+// 重みを反映した配点表のHTML（1〜14位）
+function weightedPointTableRows(weight) {
+  return SOGO_POINT_TABLE.map((pt, i) => {
+    const weighted = Number((pt * weight).toFixed(2));
+    return `${i + 1}位${weighted}`;
+  }).join(" ／ ");
+}
+
+function renderSogoTab() {
+  const el = document.getElementById("sogo-content");
+  if (!el) return;
+
+  const igoIds = igoParticipantIds();
+  const mjIds  = mahjongParticipantIds();
+  const allIds = [...new Set([...igoIds, ...mjIds])];
+
+  if (allIds.length === 0) {
+    el.innerHTML = `<p class="note" style="margin:0">⚙️設定タブで、今回の合宿の参加者（囲碁・麻雀）を選んでください。</p>`;
+    return;
+  }
+
+  const igoMap = computeIgoRankPointsMap(igoIds, state.igoResults || []);
+  const mjMap  = computeMahjongRankPointsMap(mjIds, state.mahjongResults, state.chipRate);
+  const hasAnyPoints = Object.keys(igoMap).length > 0 || Object.keys(mjMap).length > 0;
+
+  let html = `<p class="note" style="margin-top:0">囲碁・麻雀それぞれの合宿内の順位を配点表でポイント化し、重み（⚙️設定タブ）を掛けて合算します。</p>`;
+  html += `<details style="margin-bottom:14px"><summary class="sogo-table-toggle">配点表を見る（重み反映後）</summary>
+    <div class="note" style="margin-top:8px">
+      ⚫囲碁（重み${state.weights.igo}）<br>${weightedPointTableRows(state.weights.igo)}
+    </div>
+    <div class="note" style="margin-top:10px">
+      🀄麻雀（重み${state.weights.mahjong}）<br>${weightedPointTableRows(state.weights.mahjong)}
+    </div>
+    <div class="note" style="margin-top:8px">（15位以下は今のところ0点。今後の課題です）</div>
+  </details>`;
+
+  if (!hasAnyPoints) {
+    html += `<p style="color:#999;font-size:0.88rem">まだ囲碁・麻雀どちらも結果がありません。</p>`;
+    el.innerHTML = html;
+    return;
+  }
+
+  const rows = computeSogoRows(allIds, state.participants, igoMap, mjMap, state.weights);
+  html += sogoRowsHTML(rows);
+
+  el.innerHTML = html;
+}
+
+// 総合順位の行データを計算する（参加者リスト・重みを明示的に渡すことで、
+// 今回の合宿にもアーカイブ済みの合宿にも使う）
+function computeSogoRows(allIds, participants, igoMap, mjMap, weights) {
+  const partMap = {};
+  participants.forEach(p => { partMap[p.id] = p; });
+
+  const rows = allIds.map(id => {
+    const doesIgo = !!(partMap[id] && partMap[id].igo);
+    const doesMj  = !!(partMap[id] && partMap[id].mahjong);
+    const igoInfo = igoMap[id]; // { rank, points } | undefined
+    const mjInfo  = mjMap[id];
+    const igoP = igoInfo ? igoInfo.points : 0;
+    const mjP  = mjInfo ? mjInfo.points : 0;
+    // 重みを掛けた後の内訳（表示上の内訳＋合計が、見たまま足し算で合うようにする）
+    const igoWeighted = Number((igoP * weights.igo).toFixed(2));
+    const mjWeighted  = Number((mjP * weights.mahjong).toFixed(2));
+    const total = Number((igoWeighted + mjWeighted).toFixed(2));
+    return { id, name: roster[id]?.name || "", doesIgo, doesMj, igoInfo, mjInfo, igoWeighted, mjWeighted, total };
+  });
+  rows.sort((a, b) => b.total - a.total);
+  return rows;
+}
+
+function sogoRowsHTML(rows) {
+  const medals = ["🥇","🥈","🥉"];
+  return rows.map((r, i) => {
+    const igoLabel = !r.doesIgo ? `囲碁：未参加`
+                   : r.igoInfo  ? `囲碁${r.igoInfo.rank}位（${r.igoWeighted}pt）`
+                   : `囲碁：順位未定`;
+    const mjLabel  = !r.doesMj  ? `麻雀：未参加`
+                   : r.mjInfo   ? `麻雀${r.mjInfo.rank}位（${r.mjWeighted}pt）`
+                   : `麻雀：まだ対局なし`;
+    return `
+      <div class="sogo-row">
+        <div class="sogo-num">${medals[i] || (i + 1)}</div>
+        <div class="sogo-info">
+          <div class="sogo-name">${escapeHtml(r.name)}</div>
+          <div class="sogo-sub">${igoLabel}　／　${mjLabel}</div>
+        </div>
+        <div class="sogo-total">${r.total}pt</div>
+      </div>`;
+  }).join("");
+}
+
+// ============================================================
+//  新しい合宿にする（アーカイブ）
+// ============================================================
+document.getElementById("new-camp-btn").addEventListener("click", () => {
+  if (!confirm("今回の合宿を📚過去の合宿にアーカイブしてから、次の合宿に備えて白紙に戻します（開催日・参加者・回戦数・対局結果はリセットされます。重み・チップレート・シーズンは引き継がれます）。\nよろしいですか？")) return;
+  if (archiveRef) {
+    const participantNames = {};
+    state.participants.forEach(p => { participantNames[p.id] = roster[p.id]?.name || ""; });
+    archiveRef.push({
+      eventStartDate: state.eventStartDate,
+      eventEndDate: state.eventEndDate,
+      participants: state.participants,
+      participantNames, // 名簿から削除された後も名前が分かるよう、アーカイブ時点でスナップショットしておく
+      igoRounds: state.igoRounds,
+      igoResults: state.igoResults,
+      mahjongResults: state.mahjongResults,
+      weights: { ...state.weights },
+      chipRate: state.chipRate,
+      season: state.season
+    });
+  }
+  state.eventStartDate = "";
+  state.eventEndDate = "";
+  state.participants = [];
+  state.igoRounds = null;
+  state.igoResults = [];
+  state.mahjongResults = [];
+  // 重み・チップレート・シーズンだけそのまま引き継ぐ
+  igoActiveRoundIdx = 0;
+  mjRankInputDirty = false;
+  pushState();
+  fillSetupInputs();
+  renderParticipants();
+  renderIgoTab();
+  renderMahjongTab();
+  renderSogoTab();
+  archiveShowAll = false;
+  renderArchiveTab();
+  showToast("今回の合宿をアーカイブし、新しい合宿を開始しました");
+});
+
+// ============================================================
+//  📚過去の合宿タブ
+// ============================================================
+const ARCHIVE_PAGE_SIZE = 6;
+let archiveShowAll = false;
+let archiveSeasonFilter = "all";
+
+function formatSingleDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${y}/${parseInt(m)}/${parseInt(d)}`;
+}
+// 開催日を範囲表示する（終了日が無い・開始日と同じなら単日として表示）
+function formatArchiveDateRange(startDate, endDate) {
+  if (!startDate) return "開催日未設定";
+  if (!endDate || endDate === startDate) return formatSingleDate(startDate);
+  return `${formatSingleDate(startDate)}〜${formatSingleDate(endDate)}`;
+}
+
+// アーカイブ済みの1件分から、囲碁参加者ID・麻雀参加者IDを取り出す
+function archiveIgoIds(rec) { return (rec.participants || []).filter(p => p.igo).map(p => p.id); }
+function archiveMjIds(rec)  { return (rec.participants || []).filter(p => p.mahjong).map(p => p.id); }
+
+function renderArchiveTab() {
+  const el = document.getElementById("archive-content");
+  if (!el || !archiveRef) return;
+  archiveRef.once("value", snap => {
+    const data = snap.val();
+    const list = data
+      ? Object.entries(data).sort((a, b) => b[0].localeCompare(a[0])).map(([key, v]) => ({ key, ...v }))
+      : [];
+
+    // シーズンの選択肢（アーカイブ済み＋現在進行中の合宿のシーズンから作る）
+    const seasonSet = new Set(list.map(r => r.season || 1));
+    seasonSet.add(state.season || 1);
+    const seasonOptions = [...seasonSet].sort((a, b) => b - a);
+
+    let html = `<p class="note" style="margin-top:0">これまでの合宿結果を、今の画面と同じ形式で見られます（読み取り専用）。</p>`;
+
+    html += `<div class="fg"><label>シーズンで絞り込む</label>
+      <select id="archive-season-filter">
+        <option value="all" ${archiveSeasonFilter==="all"?"selected":""}>全期間</option>
+        ${seasonOptions.map(s => `<option value="${s}" ${String(archiveSeasonFilter)===String(s)?"selected":""}>シーズン${s}</option>`).join("")}
+      </select>
+    </div>`;
+
+    const filteredList = archiveSeasonFilter === "all" ? list : list.filter(r => String(r.season || 1) === String(archiveSeasonFilter));
+    // 現在進行中の合宿も、通算成績には（対象シーズンなら）含める
+    const includeCurrent = archiveSeasonFilter === "all" || String(archiveSeasonFilter) === String(state.season || 1);
+    // 名簿から削除された対局者でも表示できるよう、全アーカイブの名前スナップショットをマージする
+    const mergedNameFallback = {};
+    list.forEach(rec => Object.assign(mergedNameFallback, rec.participantNames || {}));
+
+    html += `<h4 class="section-head" style="margin-top:18px">🏅 通算成績${archiveSeasonFilter==="all" ? "（全期間）" : "（シーズン" + archiveSeasonFilter + "）"}</h4>`;
+    html += `<p class="note" style="margin-top:-4px">進行中の合宿も含めて集計します。</p>`;
+    html += renderAllTimeTotals(filteredList, includeCurrent, mergedNameFallback);
+
+    html += `<h4 class="section-head" style="margin-top:22px">📜 合宿ごとの結果</h4>`;
+    if (filteredList.length === 0) {
+      html += `<p class="note" style="margin:0">該当する合宿の記録はまだありません。</p>`;
+    } else {
+      const showCount = archiveShowAll ? filteredList.length : Math.min(ARCHIVE_PAGE_SIZE, filteredList.length);
+      const visible = filteredList.slice(0, showCount);
+      html += visible.map((rec, i) => {
+        const igoIds = archiveIgoIds(rec), mjIds = archiveMjIds(rec);
+        const names = (rec.participants || []).map(p => resolveName(p.id, rec.participantNames)).filter(n => n && n !== "（削除済み）").join("・");
+        return `
+        <div class="archive-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div>
+              <strong>${escapeHtml(formatArchiveDateRange(rec.eventStartDate, rec.eventEndDate))}</strong>
+              <span style="display:inline-block;background:#b89752;color:#fff;font-size:0.66rem;font-weight:bold;padding:1px 7px;border-radius:10px;margin-left:6px;vertical-align:middle">シーズン${rec.season||1}</span><br>
+              <span style="color:#666;font-size:0.82rem">参加者：${escapeHtml(names)}</span>
+            </div>
+            <button type="button" class="archive-view-btn" data-key="${rec.key}" style="background:#fff;border:1px solid #ddd8cc;border-radius:6px;padding:5px 10px;font-size:0.78rem;cursor:pointer;flex-shrink:0;white-space:nowrap">結果を見る</button>
+          </div>
+          <div class="archive-detail" data-key="${rec.key}" style="display:none;margin-top:12px;border-top:1px dashed #ddd8cc;padding-top:10px"></div>
+        </div>`;
+      }).join("");
+      if (!archiveShowAll && filteredList.length > showCount) {
+        html += `<button type="button" id="archive-show-more" class="btn" style="background:#f1f0ea;color:#2c3e50;margin-top:4px">もっと見る（残り${filteredList.length - showCount}件）</button>`;
+      }
+    }
+
+    el.innerHTML = html;
+
+    document.getElementById("archive-season-filter").addEventListener("change", function() {
+      archiveSeasonFilter = this.value;
+      renderArchiveTab();
+    });
+
+    el.querySelectorAll(".archive-view-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.key;
+        const rec = filteredList.find(r => r.key === key);
+        const detail = el.querySelector(`.archive-detail[data-key="${key}"]`);
+        const isOpen = detail.style.display !== "none";
+        if (isOpen) {
+          detail.style.display = "none";
+          btn.textContent = "結果を見る";
+        } else {
+          detail.innerHTML = renderArchivedCampDetail(rec);
+          detail.style.display = "";
+          btn.textContent = "閉じる";
+        }
+      });
+    });
+
+    const moreBtn = document.getElementById("archive-show-more");
+    if (moreBtn) moreBtn.addEventListener("click", () => { archiveShowAll = true; renderArchiveTab(); });
+  });
+}
+
+// アーカイブ済み1件分の詳細（囲碁マス目表・麻雀順位/履歴・総合順位）を、今の画面と同じ形式で描画する
+function renderArchivedCampDetail(rec) {
+  const igoIds = archiveIgoIds(rec);
+  const mjIds  = archiveMjIds(rec);
+  const igoResults = rec.igoResults || [];
+  const mjResults  = rec.mahjongResults || [];
+  const weights = rec.weights || { igo: 1, mahjong: 1 };
+  const chipRate = (typeof rec.chipRate === "number") ? rec.chipRate : 1;
+  const nameFallback = rec.participantNames || {};
+  // 名簿から削除された対局者がいても、アーカイブ時点の名前スナップショットで補う
+  const withNames = list => { list.forEach(item => { item.name = resolveName(item.id, nameFallback); }); return list; };
+
+  let html = "";
+
+  html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin-bottom:6px">⚫ 囲碁</div>`;
+  if (igoIds.length === 0) {
+    html += `<p class="note" style="margin:0 0 12px">囲碁の参加者はいませんでした。</p>`;
+  } else {
+    const fixedOrderList = withNames(buildIgoMatrixList(igoIds, igoResults));
+    const roundCount = rec.igoRounds || igoResults.length;
+    html += igoMatrixTableHTML(fixedOrderList, igoResults, roundCount);
+  }
+
+  html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🀄 麻雀</div>`;
+  if (mjIds.length < 4) {
+    html += `<p class="note" style="margin:0 0 12px">麻雀の参加者は4人未満でした。</p>`;
+  } else {
+    html += mjStandingsListHTML(withNames(computeMjStandings(mjIds, mjResults, chipRate)));
+    if (mjResults.length > 0) {
+      html += `<div style="font-size:0.72rem;color:#999;font-family:sans-serif;margin:10px 0 6px">対局履歴</div>`;
+      html += mjHistoryListHTML(mjResults, { showDelete: false, chipRate, nameFallback });
+    }
+  }
+
+  const allIds = [...new Set([...igoIds, ...mjIds])];
+  if (allIds.length > 0) {
+    const igoMap = computeIgoRankPointsMap(igoIds, igoResults);
+    const mjMap  = computeMahjongRankPointsMap(mjIds, mjResults, chipRate);
+    const hasAnyPoints = Object.keys(igoMap).length > 0 || Object.keys(mjMap).length > 0;
+    html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🏅 総合（重み：囲碁${weights.igo}／麻雀${weights.mahjong}）</div>`;
+    if (hasAnyPoints) {
+      const rows = withNames(computeSogoRows(allIds, rec.participants || [], igoMap, mjMap, weights));
+      html += sogoRowsHTML(rows);
+    } else {
+      html += `<p class="note" style="margin:0">結果がありませんでした。</p>`;
+    }
+  }
+
+  return html;
+}
+
+// 全期間（またはシーズン内）の通算成績：囲碁・麻雀・総合をそれぞれ集計する。
+// filteredList（アーカイブ済み）に加え、includeCurrentがtrueなら進行中の合宿も合算する。
+function renderAllTimeTotals(filteredList, includeCurrent, nameFallback) {
+  const igoTotals = {}, mjTotals = {}, sogoTotals = {};
+  const igoCamps = {}, mjCamps = {}, sogoCamps = {}; // 参加した合宿の回数（種目ごと）
+  const addPoints = (map, id, pt) => { map[id] = (map[id] || 0) + pt; };
+  const addCount = (map, id) => { map[id] = (map[id] || 0) + 1; };
+
+  function addCamp(participants, igoIds, igoResults, mjIds, mjResults, weights, chipRate) {
+    const igoMap = computeIgoRankPointsMap(igoIds, igoResults || []);
+    const mjMap  = computeMahjongRankPointsMap(mjIds, mjResults, chipRate);
+    Object.keys(igoMap).forEach(id => { addPoints(igoTotals, id, Number((igoMap[id].points * weights.igo).toFixed(2))); addCount(igoCamps, id); });
+    Object.keys(mjMap).forEach(id => { addPoints(mjTotals, id, Number((mjMap[id].points * weights.mahjong).toFixed(2))); addCount(mjCamps, id); });
+    const allIds = new Set([...Object.keys(igoMap), ...Object.keys(mjMap)]);
+    allIds.forEach(id => {
+      const igoP = igoMap[id] ? igoMap[id].points : 0;
+      const mjP  = mjMap[id] ? mjMap[id].points : 0;
+      addPoints(sogoTotals, id, Number((igoP * weights.igo + mjP * weights.mahjong).toFixed(2)));
+      addCount(sogoCamps, id);
+    });
+  }
+
+  filteredList.forEach(rec => {
+    addCamp(rec.participants || [], archiveIgoIds(rec), rec.igoResults, archiveMjIds(rec), rec.mahjongResults,
+      rec.weights || { igo: 1, mahjong: 1 }, (typeof rec.chipRate === "number") ? rec.chipRate : 1);
+  });
+  if (includeCurrent) {
+    addCamp(state.participants, igoParticipantIds(), state.igoResults, mahjongParticipantIds(), state.mahjongResults,
+      state.weights, state.chipRate);
+  }
+
+  function totalsToHTML(totals, camps, unitLabel) {
+    const ids = Object.keys(totals).filter(id => totals[id] > 0);
+    if (ids.length === 0) return `<p class="note" style="margin:4px 0 12px">まだ結果がありません。</p>`;
+    const rows = ids.map(id => ({ id, name: resolveName(id, nameFallback), pt: totals[id], camps: camps[id] || 0 }));
+    rows.sort((a, b) => b.pt - a.pt);
+    const medals = ["🥇","🥈","🥉"];
+    return `<div style="margin-bottom:14px">` + rows.map((r, i) => `
+      <div class="sogo-row">
+        <div class="sogo-num">${medals[i] || (i+1)}</div>
+        <div class="sogo-info">
+          <div class="sogo-name">${escapeHtml(r.name)}</div>
+          <div class="sogo-sub">${r.camps}回参加</div>
+        </div>
+        <div class="sogo-total">${r.pt}${unitLabel}</div>
+      </div>`).join("") + `</div>`;
+  }
+
+  let html = `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">⚫囲碁</div>`;
+  html += totalsToHTML(igoTotals, igoCamps, "pt");
+  html += `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">🀄麻雀</div>`;
+  html += totalsToHTML(mjTotals, mjCamps, "pt");
+  html += `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">🏅総合</div>`;
+  html += totalsToHTML(sogoTotals, sogoCamps, "pt");
+  return html;
+}
+</script>
+</body>
+</html>
