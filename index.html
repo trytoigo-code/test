@@ -1,12 +1,12 @@
 <!--
 ================================================================================
   このアプリについて
-  大石道場 — 設計思想と共同編集の進め方
+  山あるき — 設計思想と共同編集の進め方
 ================================================================================
 
 【アプリの目的】
-  大石道場の親睦ポータルページ。
-  大石道場メンバーが各アプリにアクセスするための入口として機能する。
+  囲碁・麻雀のリーグ戦管理アプリ群のポータルページ。
+  山あるきメンバーが各アプリにアクセスするための入口として機能する。
 
 【利用環境】
   - スマホ利用を最優先とする（モバイルファースト）
@@ -31,9 +31,15 @@
   ・アプリを追加・変更したら「収録アプリ」を合わせて更新する
 
 【収録アプリ（現時点）】
-  - 大石道場 予定（yotei.html）：合宿・大石道場杯の開催予定と参加表明の管理
+  - 足あと（ashiato.html）：仲間との活動記録・希望地の共有
+  - 総合順位（sogo.html）：星取（igo.html）×点棒（mahjong.html）のレーティングをもとにした総合順位
+  - 囲碁リーグ戦「星取」（igo.html）：星取表・履歴・手合い管理
+  - 麻雀リーグ戦「点棒」（mahjong.html）：成績・順位・履歴の共有
+  - 囲碁 一局一得（goroku.html）：対局前に考え、対局後に学ぶアプリ。しおり機能付き
+  - 囲碁読み物（dangi.html）：囲碁にまつわる読み物・考察、みんなの投稿掲示板
   - 大石道場杯（tournament.html）：8人勝ち抜き大会の対戦表・結果共有
-  - 大石道場合宿（gasshuku.html）：合宿の囲碁（スイス式）・麻雀・総合順位の管理
+
+  ボタンは名称のみを表示し、説明文は置かない（縦スクロールを減らすため。2026-09-26変更）。
 ================================================================================
 -->
 <!DOCTYPE html>
@@ -41,7 +47,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>大石道場</title>
+  <title>山あるき</title>
 
   <style>
     :root { color-scheme: light; }
@@ -81,8 +87,8 @@
       background: #fff;
       border: 1px solid #e0dbcd;
       border-radius: 12px;
-      padding: 18px;
-      margin-bottom: 14px;
+      padding: 16px 18px;
+      margin-bottom: 10px;
       color: inherit;
       transition: 0.2s;
     }
@@ -95,13 +101,6 @@
       font-size: 1.08rem;
       font-weight: bold;
       color: #2c3e50;
-      margin-bottom: 6px;
-    }
-
-    .desc {
-      font-size: 0.88rem;
-      color: #666;
-      line-height: 1.5;
     }
 
     .footer {
@@ -116,34 +115,38 @@
 
 <div class="wrap">
 
-  <h1>大石道場</h1>
+  <h1>山あるき</h1>
 
   <div class="sub">
-    大石道場アプリ
+    囲碁・麻雀のリーグ戦管理
   </div>
 
-  <a class="card" href="yotei.html">
-    <div class="title">📅 大石道場 予定</div>
-    <div class="desc">
-      合宿・大石道場杯の開催予定と参加表明。<br>
-      次はいつ、誰が来るかをまとめて確認。
-    </div>
+  <a class="card" href="ashiato.html?title=山あるき&group=yamaарuki">
+    <div class="title">🐾 足あと</div>
+  </a>
+
+  <a class="card" href="sogo.html">
+    <div class="title">🏅 総合順位</div>
+  </a>
+
+  <a class="card" href="igo.html">
+    <div class="title">⚫ 囲碁リーグ戦「星取」</div>
+  </a>
+
+  <a class="card" href="mahjong.html">
+    <div class="title">🀄 麻雀リーグ戦「点棒」</div>
+  </a>
+
+  <a class="card" href="goroku.html?group=yamaарuki">
+    <div class="title">📖 囲碁 一局一得</div>
+  </a>
+
+  <a class="card" href="dangi.html?title=山あるき&group=yamaарuki">
+    <div class="title">📝 囲碁読み物</div>
   </a>
 
   <a class="card" href="tournament.html">
     <div class="title">🏆 大石道場杯</div>
-    <div class="desc">
-      8人勝ち抜き大会の対戦表アプリ。<br>
-      1回戦から順位決定戦まで、結果をみんなで共有。
-    </div>
-  </a>
-
-  <a class="card" href="gasshuku.html">
-    <div class="title">🏕️ 大石道場合宿</div>
-    <div class="desc">
-      合宿の囲碁（スイス式）・麻雀の記録アプリ。<br>
-      合宿ごとの総合順位も自動で算出。
-    </div>
   </a>
 
   <div class="footer">
@@ -153,4 +156,4 @@
 </div>
 
 </body>
-</html
+</html>
