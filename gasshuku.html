@@ -24,8 +24,8 @@
     前後にずらして再戦にならない組み合わせを探す（それでも見つからなければ
     仕方なく再戦を許容する）。次回戦の組み合わせは、前回戦の全結果が揃うまで
     生成されない。
-    不戦敗は基本なし（時間差で対局して結果を埋める運用）。全体人数が奇数の
-    ときは1人がbye（まだbyeを経験していない人を優先。勝敗に影響しない）。
+    全体人数が奇数のときは1人が不戦勝（bye・お休み。まだ経験していない人を優先。
+    勝ち数に数える。tournament.htmlのスイス式と同じ扱い）。
     最終順位の決定は「勝数 → 直接対決 → Buchholz（対戦相手の勝数合計）→
     機械的な基準（登録順等）」の順でタイブレークする。
 
@@ -101,7 +101,7 @@
     都度、上書き確認を挟む）
   - 囲碁（スイス式、実装済み）
       対局者×回戦のマス目表（横スクロール）で全回戦を一覧表示。各マスに対戦相手と
-      勝敗（○/●）、未決着は「…」、回戦未生成は「－」、お休みの回は「お休み」を表示。
+      勝敗（○/●）、未決着は「…」、回戦未生成は「－」、不戦勝の回は「不戦勝 ○」を表示。
       行の並びは「今回の合宿設定」で決めた参加者の並びに固定し、結果を入力しても
       行そのものは動かさない。順位（左端の列）だけを「勝数→直接対決→Buchholz
       （対戦相手の勝数合計）→今回の合宿設定で並べた参加者の順」で算出して表示する。
@@ -118,8 +118,10 @@
       過去の回戦（最新以外）の結果もタップして修正できる。ただし修正すると、
       その回戦より後に生成済みの回戦は自動的に消去される（結果が変わることで
       それ以降の組み合わせの前提が崩れるため。組み直しが必要）。全体人数が
-      奇数のときは1人がbye（まだbyeを経験していない人を優先。勝敗に影響しない・
-      不戦敗にはしない）。
+      奇数のときは1人が不戦勝（bye。まだ経験していない人を優先。勝ち数に数える）。
+      不戦勝の人は自動で決まるが、最新の回戦で結果がまだ1件も入っていなければ、
+      回戦の画面のプルダウンで手動で変更できる（組み合わせを作り直す）。順位は
+      実際の対局の結果が1件決まってから表示する（不戦勝だけでは順位をつけない）。
   - 麻雀（回ごとの自由対局記録、実装済み）
       対象は「今回の合宿設定」で麻雀ON・かつ名簿に存在する参加者。半チャンのたびに
       その中から卓の4人を自由に選んで記録する（入れ替わり・抜け番に対応。既存の
@@ -175,8 +177,8 @@
     割って平均化（天井が揃うが「両方頑張った」貢献が薄まる）／C.総合ランキングは
     両方参加した人限定にする／D.片方だけの人に、もう片方の順位を仮補完する。
     まだ結論は出ていない）
-  - byeで休んだ人が「不戦敗は基本なし・時間差で対局する」の方針通り実際に
-    対局した場合、その結果をアプリ上に反映する手段がまだ無い
+  - 不戦勝（bye）の人が後日実際に対局した場合の結果を、アプリ上に反映する手段が
+    まだ無い（不戦勝の勝ちはそのまま残る）
   - 合言葉はアプリ側の入力チェックのみで、Firebase自体は誰でも読み書きできる
     構造（他の山あるき／大石道場アプリ共通の弱点）
   - 名簿に同姓同名がいる場合、画面上は名前でしか表示していないため区別できない
@@ -1045,18 +1047,22 @@ function igoParticipantIds() {
 function playedPairSet(rounds) {
   const set = new Set();
   rounds.forEach(round => round.forEach(m => {
-    if (m.b === null || !m.winner || m.winner === "bye") return;
+    if (igoIsBye(m) || !m.winner || m.winner === "bye") return;
     set.add(pairKey(m.a, m.b));
   }));
   return set;
 }
 function pairKey(a, b) { return [a, b].sort().join("|"); }
+// 不戦勝（bye）の判定。Firebaseはnullの項目を保存時に取り除くため、読み込み後は b が null ではなく
+// 未定義になる。そのため「b が無い」で判定する（tournament.htmlと同じ）。
+function igoIsBye(m) { return !m.b; }
 
-// 現時点までの勝敗を集計（byeは勝敗に影響させない）
+// 現時点までの勝敗を集計（不戦勝（bye）は勝ち数に数える。tournament.htmlと同じ）
 function igoScores(rounds) {
   const wins = {}, losses = {};
   rounds.forEach(round => round.forEach(m => {
-    if (m.b === null || !m.winner || m.winner === "bye") return;
+    if (igoIsBye(m)) { wins[m.a] = (wins[m.a]||0)+1; return; }
+    if (!m.winner || m.winner === "bye") return;
     if (m.winner === "a") { wins[m.a] = (wins[m.a]||0)+1; losses[m.b] = (losses[m.b]||0)+1; }
     else if (m.winner === "b") { wins[m.b] = (wins[m.b]||0)+1; losses[m.a] = (losses[m.a]||0)+1; }
   }));
@@ -1065,7 +1071,7 @@ function igoScores(rounds) {
 
 function priorByeIds(rounds) {
   const s = new Set();
-  rounds.forEach(round => round.forEach(m => { if (m.b === null) s.add(m.a); }));
+  rounds.forEach(round => round.forEach(m => { if (igoIsBye(m)) s.add(m.a); }));
   return s;
 }
 
@@ -1078,9 +1084,9 @@ function priorByeIds(rounds) {
 //    グループへ降格させ、そのグループの先頭に加えて一緒に処理する
 // 4. クロスの組み合わせが対戦済みだった場合は、下位半分の中で相手を前後に
 //    ずらしながら再戦にならない組み合わせを探す（標準的な入れ替え手順）
-// 5. 全体の人数が奇数のときは、最初に1人だけbye（不戦敗にはしない）にしてから
-//    残り偶数人数で上記の処理を行う
-function generatePairing(igoIds, rounds) {
+// 5. 全体の人数が奇数のときは、最初に1人だけbye（不戦勝＝勝ち数に数える）にしてから
+//    残り偶数人数で上記の処理を行う。byeの人は手動で指定することもできる（forcedBye）
+function generatePairing(igoIds, rounds, forcedBye) {
   const { wins } = igoScores(rounds);
   const played = playedPairSet(rounds);
   const byes = priorByeIds(rounds);
@@ -1088,10 +1094,14 @@ function generatePairing(igoIds, rounds) {
   let pool = [...igoIds];
   let byeId = null;
   if (pool.length % 2 === 1) {
-    // 成績の低い順に見て、まだbyeを経験していない人を優先してbyeにする
-    const byOrder = [...pool].sort((a, b) => (wins[a]||0) - (wins[b]||0));
-    for (const id of byOrder) { if (!byes.has(id)) { byeId = id; break; } }
-    if (!byeId) byeId = byOrder[0];
+    if (forcedBye && pool.includes(forcedBye)) {
+      byeId = forcedBye; // 不戦勝の人を手動で指定したとき
+    } else {
+      // 成績の低い順に見て、まだbyeを経験していない人を優先してbyeにする
+      const byOrder = [...pool].sort((a, b) => (wins[a]||0) - (wins[b]||0));
+      for (const id of byOrder) { if (!byes.has(id)) { byeId = id; break; } }
+      if (!byeId) byeId = byOrder[0];
+    }
     pool = pool.filter(id => id !== byeId);
   }
 
@@ -1179,7 +1189,7 @@ function renderIgoTab() {
   // 対局者×回戦のマス目表（一覧表示）。行の並びは「今回の合宿設定」で決めた
   // 参加者の並びに固定し、結果を入力しても動かさない。順位は別途算出して数字だけ差し替える。
   const fixedOrderList = buildIgoMatrixList(igoIds, rounds);
-  let html = `<p class="note" style="margin-top:0">〇＝勝ち／●＝負け／…＝結果待ち／－＝その回戦は未生成、を表します。</p>`;
+  let html = `<p class="note" style="margin-top:0">〇＝勝ち／●＝負け／…＝結果待ち／－＝その回戦は未生成、を表します。不戦勝は勝ち数に数えます。</p>`;
   html += igoMatrixTableHTML(fixedOrderList, rounds, state.igoRounds);
 
   // 結果入力（回戦タブ＋対局カード）
@@ -1197,6 +1207,15 @@ function renderIgoTab() {
     const isPastRound = idx < rounds.length - 1;
     if (isPastRound) html += `<p class="note" style="margin-top:0">この回戦を修正すると、第${idx+2}回戦以降の組み合わせは自動的に消去されます（組み直しが必要になります）。</p>`;
     html += round.map((m, mi) => matchCardHTML(m, idx, mi, false)).join("");
+    // 不戦勝の人は自動で決まるが、最新の回戦で結果がまだ1件も入っていなければ変更できる
+    const byeM = round.find(igoIsBye);
+    if (byeM && idx === rounds.length - 1 && round.every(m => igoIsBye(m) || !m.winner)) {
+      const prior = priorByeIds(rounds.slice(0, idx));
+      html += `<div class="fg" style="margin-top:12px"><label>不戦勝の人を変更する</label>
+        <select id="igo-bye-select">${igoIds.map(id =>
+          `<option value="${id}"${id === byeM.a ? " selected" : ""}>${escapeHtml(roster[id]?.name || "")}${prior.has(id) ? "（不戦勝済み）" : ""}</option>`).join("")}</select>
+        <p class="note" style="margin:6px 0 0">変えると、この回戦の組み合わせを作り直します（結果を入れたあとは変更できません）。</p></div>`;
+    }
   } else if (idx === rounds.length) {
     const prevOk = idx === 0 || roundComplete(rounds[idx - 1]);
     if (prevOk) {
@@ -1210,6 +1229,15 @@ function renderIgoTab() {
 
   el.querySelectorAll(".round-tab-btn").forEach(btn => {
     btn.addEventListener("click", () => { igoActiveRoundIdx = Number(btn.dataset.round); renderIgoTab(); });
+  });
+  const byeSel = document.getElementById("igo-bye-select");
+  if (byeSel) byeSel.addEventListener("change", () => {
+    const prior = (state.igoResults || []).slice(0, idx);
+    state.igoResults = [...prior, generatePairing(igoIds, prior, byeSel.value)];
+    pushState();
+    showToast(`不戦勝を${roster[byeSel.value]?.name || ""}に変更し、組み合わせを作り直しました`);
+    renderIgoTab();
+    renderSogoTab();
   });
   const genBtn = document.getElementById("igo-gen-round");
   if (genBtn) genBtn.addEventListener("click", () => {
@@ -1228,8 +1256,8 @@ function renderIgoTab() {
 }
 
 function matchCardHTML(m, roundIdx, matchIdx) {
-  if (m.b === null) {
-    return `<div class="match-card"><div class="match-bye">${escapeHtml(roster[m.a]?.name || "")}　この回戦はお休み（不戦敗にはなりません）</div></div>`;
+  if (igoIsBye(m)) {
+    return `<div class="match-card"><div class="match-bye">${escapeHtml(roster[m.a]?.name || "")}　この回戦は不戦勝（勝ち数に数えます）</div></div>`;
   }
   const nameA = escapeHtml(roster[m.a]?.name || "");
   const nameB = escapeHtml(roster[m.b]?.name || "");
@@ -1283,7 +1311,7 @@ function computeIgoStandings(igoIds, rounds) {
   const opponents = {};
   igoIds.forEach(id => opponents[id] = []);
   rounds.forEach(round => round.forEach(m => {
-    if (m.b === null || !m.winner || m.winner === "bye") return;
+    if (igoIsBye(m) || !m.winner || m.winner === "bye") return;
     opponents[m.a] = opponents[m.a] || []; opponents[m.a].push(m.b);
     opponents[m.b] = opponents[m.b] || []; opponents[m.b].push(m.a);
   }));
@@ -1291,7 +1319,7 @@ function computeIgoStandings(igoIds, rounds) {
   function directResult(x, y) {
     for (const round of rounds) {
       for (const m of round) {
-        if (m.b === null || !m.winner || m.winner === "bye") continue;
+        if (igoIsBye(m) || !m.winner || m.winner === "bye") continue;
         if (m.a === x && m.b === y) return m.winner === "a" ? -1 : 1;
         if (m.a === y && m.b === x) return m.winner === "b" ? -1 : 1;
       }
@@ -1312,7 +1340,7 @@ function computeIgoStandings(igoIds, rounds) {
 }
 
 // 対局者×回戦のマス目表（横スクロール）。各マスには対戦相手と勝敗（○/●）、
-// 未決着なら「…」、回戦未生成なら「－」、その回戦がお休みなら「お休み」を表示する。
+// 未決着なら「…」、回戦未生成なら「－」、その回戦が不戦勝なら「不戦勝 ○」を表示する。
 // 行の並びは「今回の合宿設定」で決めた参加者の並びに固定（結果を入力しても行は動かさない）。
 // 順位（左端）だけを勝数→直接対決→Buchholzで算出して差し替える。
 function igoMatrixCell(id, roundIdx, rounds) {
@@ -1320,7 +1348,7 @@ function igoMatrixCell(id, roundIdx, rounds) {
   if (!round) return `<td class="igo-cell-empty">－</td>`;
   const m = round.find(mm => mm.a === id || mm.b === id);
   if (!m) return `<td class="igo-cell-empty">－</td>`;
-  if (m.b === null) return `<td class="igo-cell-pending">お休み</td>`;
+  if (igoIsBye(m)) return `<td><div style="font-weight:bold">不戦勝</div><div class="igo-cell-win">○</div></td>`;
   const isA = m.a === id;
   const oppName = escapeHtml(roster[isA ? m.b : m.a]?.name || "");
   if (m.winner === "a" || m.winner === "b") {
@@ -1334,7 +1362,8 @@ function igoMatrixTableHTML(list, rounds, roundCount) {
   if (list.length === 0) return `<p style="color:#999;font-size:0.88rem">対局結果がまだありません。</p>`;
   // 1局も決着していないうちは、まだ実力差が出ていないのに順位がついて見えるのがおかしいため、
   // 順位列は「－」にしておく。行の並びは常に「今回の合宿設定」で決めた参加者の順で固定。
-  const anyDecided = list.some(p => p.w > 0 || p.l > 0);
+  // 不戦勝だけでは順位をつけない（実際の対局の結果が1件でも決まってから表示する）
+  const anyDecided = rounds.some(r => r.some(m => !igoIsBye(m) && (m.winner === "a" || m.winner === "b")));
   const medals = ["🥇","🥈","🥉"];
   let head = `<tr><th>順位</th><th>対局者</th>`;
   for (let i = 0; i < roundCount; i++) head += `<th>第${i+1}<br>回戦</th>`;
