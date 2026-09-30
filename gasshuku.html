@@ -157,6 +157,16 @@
       麻雀順位・総合順位を、今回の合宿の各タブと同じ形式で読み取り専用表示）。
       アーカイブ済みの合宿は、アーカイブ時点の重み・チップレートで計算されるため、
       後から重みを変更しても過去の合宿の総合順位は変わらない。
+  - 囲碁レーティング（参考値）（📚過去の合宿タブの通算成績の下。星取 igo.html と同じ
+      Elo方式：全員1500から始め、対局した順（合宿の開始日の古い順、同じ合宿内は
+      回戦順）に1局ずつ更新する。1局で動く幅は対局20局未満の間は最大40点、以降は
+      最大24点。30局未満は「暫定」表示。合宿をまたいで通算し、シーズンの絞り込みに
+      従う（進行中の合宿も含む）。星取と同じく手合い差を考慮する
+      （対局ごとに記録した手合いを使う。未記録は互先扱い）。不戦勝は対局していないので数えない。保存は
+      せず表示のたびに全履歴から計算し直す。順位・総合ポイントには使わない参考値）
+  - 囲碁の手合い（回戦の対局カードごとに手合いを選べる。互先／どちらかが下手で
+      先・2子・3子・4子。未記録は互先。後から何度でも変更でき、変更しても組み合わせや
+      勝敗には影響しない（レーティングと、マス目表の小さな手合い表示にだけ使う））
   - 設定タブ（管理者の仕事）：重み設定（囲碁・麻雀それぞれの重み。デフォルト
     囲碁1.0・麻雀1.0）、シーズン管理（西さんが手動で区切る。「今のシーズンを
     終えて次を始める」でその時点の重みをFirebaseにアーカイブしてシーズン番号を
@@ -169,6 +179,7 @@
     折りたたみなど、山あるき／大石道場共通のUI部品はこの段階で導入済み。
 
 【今後の改良候補】
+  - 囲碁レーティングの変動幅・暫定の基準を、合宿の実データで調整する
   - 15位以下が出た場合の配点方針の検討
   - アーカイブ済みの合宿記録の修正・削除（現状は一度アーカイブすると読み取り専用）
   - 【重要】囲碁・麻雀どちらか片方しか参加しない人の総合順位の扱い
@@ -359,6 +370,9 @@
   }
   .match-side.winner { background: #fdf1ef; color: #b03a2e; }
   .match-vs { padding: 0 6px; color: #bbb; font-size: 0.76rem; flex-shrink: 0; }
+  .match-wrap { margin-bottom: 12px; }
+  .match-teai { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: #777; }
+  .match-teai select { flex: 1; width: auto; min-width: 0; padding: 6px 8px; font-size: 0.85rem; }
   .match-bye { padding: 12px; text-align: center; color: #888; font-size: 0.86rem; }
 
   /* 参加者選択：名簿から追加するリスト（ピル型ボタン） */
@@ -1189,7 +1203,7 @@ function renderIgoTab() {
   // 対局者×回戦のマス目表（一覧表示）。行の並びは「今回の合宿設定」で決めた
   // 参加者の並びに固定し、結果を入力しても動かさない。順位は別途算出して数字だけ差し替える。
   const fixedOrderList = buildIgoMatrixList(igoIds, rounds);
-  let html = `<p class="note" style="margin-top:0">〇＝勝ち／●＝負け／…＝結果待ち／－＝その回戦は未生成、を表します。不戦勝は勝ち数に数えます。</p>`;
+  let html = `<p class="note" style="margin-top:0">〇＝勝ち／●＝負け／…＝結果待ち／－＝その回戦は未生成、を表します。不戦勝は勝ち数に数えます。手合いがある対局は、マスの下に小さく自分の手合いを表示します。</p>`;
   html += igoMatrixTableHTML(fixedOrderList, rounds, state.igoRounds);
 
   // 結果入力（回戦タブ＋対局カード）
@@ -1230,6 +1244,15 @@ function renderIgoTab() {
   el.querySelectorAll(".round-tab-btn").forEach(btn => {
     btn.addEventListener("click", () => { igoActiveRoundIdx = Number(btn.dataset.round); renderIgoTab(); });
   });
+  el.querySelectorAll(".teai-select").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const m = state.igoResults[Number(sel.dataset.round)][Number(sel.dataset.match)];
+      m.teai = sel.value === "互先" ? null : sel.value; // 互先は保存しない（無いときは互先）
+      pushState();
+      showToast("手合いを保存しました");
+      renderIgoTab();
+    });
+  });
   const byeSel = document.getElementById("igo-bye-select");
   if (byeSel) byeSel.addEventListener("change", () => {
     const prior = (state.igoResults || []).slice(0, idx);
@@ -1255,6 +1278,18 @@ function renderIgoTab() {
   });
 }
 
+// 手合い：対局カードの a 側の手合いを m.teai に保存する（無いときは互先）。b 側はその裏返し。
+// 先＝コミなしの黒番（下手）、向先＝その相手（上手）。2子・3子・4子と向2・向3・向4も同様（星取と同じ）。
+const GK_TEAI_PAIR = { "互先":"互先", "先":"向先", "向先":"先", "2子":"向2", "向2":"2子", "3子":"向3", "向3":"3子", "4子":"向4", "向4":"4子" };
+const GK_TEAI_LEVEL = { "互先":0, "先":1, "向先":1, "2子":2, "向2":2, "3子":3, "向3":3, "4子":4, "向4":4 };
+function gkTeaiOptionsHTML(m, nameA, nameB) {
+  const cur = m.teai || "互先";
+  const o = (v, label) => `<option value="${v}"${cur === v ? " selected" : ""}>${label}</option>`;
+  return o("互先", "互先") +
+    `<optgroup label="${nameA}が下手">` + o("先", `${nameA}：先`) + o("2子", `${nameA}：2子`) + o("3子", `${nameA}：3子`) + o("4子", `${nameA}：4子`) + `</optgroup>` +
+    `<optgroup label="${nameB}が下手">` + o("向先", `${nameB}：先`) + o("向2", `${nameB}：2子`) + o("向3", `${nameB}：3子`) + o("向4", `${nameB}：4子`) + `</optgroup>`;
+}
+
 function matchCardHTML(m, roundIdx, matchIdx) {
   if (igoIsBye(m)) {
     return `<div class="match-card"><div class="match-bye">${escapeHtml(roster[m.a]?.name || "")}　この回戦は不戦勝（勝ち数に数えます）</div></div>`;
@@ -1264,11 +1299,12 @@ function matchCardHTML(m, roundIdx, matchIdx) {
   const winA = m.winner === "a", winB = m.winner === "b";
   const sideAttrs = ` data-round="${roundIdx}" data-match="${matchIdx}"`;
   const sideCls = (extra) => `match-side ${extra}`;
-  return `<div class="match-card">
+  return `<div class="match-wrap"><div class="match-card" style="margin-bottom:4px">
     <div class="${sideCls(winA?"winner":"")}"${sideAttrs} data-side="a">${winA?"👑 ":""}${nameA}</div>
     <div class="match-vs">vs</div>
     <div class="${sideCls(winB?"winner":"")}"${sideAttrs} data-side="b">${winB?"👑 ":""}${nameB}</div>
-  </div>`;
+  </div>
+  <div class="match-teai"><span>手合い</span><select class="teai-select"${sideAttrs}>${gkTeaiOptionsHTML(m, nameA, nameB)}</select></div></div>`;
 }
 
 function setIgoWinner(roundIdx, matchIdx, side) {
@@ -1351,11 +1387,14 @@ function igoMatrixCell(id, roundIdx, rounds) {
   if (igoIsBye(m)) return `<td><div style="font-weight:bold">不戦勝</div><div class="igo-cell-win">○</div></td>`;
   const isA = m.a === id;
   const oppName = escapeHtml(roster[isA ? m.b : m.a]?.name || "");
+  // 自分の手合い（互先のときは表示しない）。小さな灰色の文字で表示する
+  const ownTeai = isA ? (m.teai || "互先") : (GK_TEAI_PAIR[m.teai || "互先"] || "互先");
+  const teaiLabel = ownTeai !== "互先" ? `<div style="font-size:0.6rem;color:#999">${ownTeai}</div>` : "";
   if (m.winner === "a" || m.winner === "b") {
     const won = (isA && m.winner === "a") || (!isA && m.winner === "b");
-    return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="${won?"igo-cell-win":"igo-cell-loss"}">${won?"○":"●"}</div></td>`;
+    return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="${won?"igo-cell-win":"igo-cell-loss"}">${won?"○":"●"}</div>${teaiLabel}</td>`;
   }
-  return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="igo-cell-pending">…</div></td>`;
+  return `<td><div style="font-weight:bold;white-space:nowrap">${oppName}</div><div class="igo-cell-pending">…</div>${teaiLabel}</td>`;
 }
 
 function igoMatrixTableHTML(list, rounds, roundCount) {
@@ -2075,6 +2114,7 @@ function renderArchiveTab() {
     html += `<h4 class="section-head" style="margin-top:18px">🏅 通算成績${archiveSeasonFilter==="all" ? "（全期間）" : "（シーズン" + archiveSeasonFilter + "）"}</h4>`;
     html += `<p class="note" style="margin-top:-4px">進行中の合宿も含めて集計します。</p>`;
     html += renderAllTimeTotals(filteredList, includeCurrent, mergedNameFallback);
+    html += renderGasshukuRatings(filteredList, includeCurrent, mergedNameFallback);
 
     html += `<h4 class="section-head" style="margin-top:22px">📜 合宿ごとの結果</h4>`;
     if (filteredList.length === 0) {
@@ -2185,6 +2225,89 @@ function renderArchivedCampDetail(rec) {
 
 // 全期間（またはシーズン内）の通算成績：囲碁・麻雀・総合をそれぞれ集計する。
 // filteredList（アーカイブ済み）に加え、includeCurrentがtrueなら進行中の合宿も合算する。
+// ============================================================
+//  囲碁レーティング（参考値）：星取（igo.html）と同じElo方式
+//  手合いは対局ごとに記録した値（m.teai。未記録は互先）を使う。
+//  不戦勝（bye）は対局していないので数えない。保存はせず、表示のたびに全履歴から計算し直す。
+// ============================================================
+const GK_RATING_BASE = 1500;
+const GK_RATING_PROVISIONAL_GAMES = 30; // これ未満の対局数は「暫定」
+const GK_RATING_K_SWITCH_GAMES = 20;    // これ未満の間は、1局で動く幅を大きめにする
+const GK_RATING_K_NEW = 40;
+const GK_RATING_K_SETTLED = 24;
+const GK_HANDICAP_ELO = [0, 50, 150, 250, 350]; // 手合いの段差ごとの換算（星取と同じ仮置きの値。互先0／先50／2子150／3子250／4子350）
+
+function gkToArr(v) {
+  if (Array.isArray(v)) return v.filter(x => x !== undefined && x !== null);
+  if (v && typeof v === "object") return Object.keys(v).sort((a, b) => Number(a) - Number(b)).map(k => v[k]);
+  return [];
+}
+
+// 合宿を開始日の古い順に並べて、1局ずつレートを更新する。
+// camps: [ { date: "YYYY-MM-DD"|"", order: 並びの補助キー, igoResults } ]
+function computeGasshukuRatings(camps) {
+  const r = {}, n = {}, wins = {}, losses = {};
+  const expect = d => 1 / (1 + Math.pow(10, -d / 400));
+  const kOf = id => n[id] < GK_RATING_K_SWITCH_GAMES ? GK_RATING_K_NEW : GK_RATING_K_SETTLED;
+  const ordered = [...camps].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || String(a.order).localeCompare(String(b.order)));
+  ordered.forEach(camp => {
+    gkToArr(camp.igoResults).forEach(round => gkToArr(round).forEach(m => {
+      if (!m.b || (m.winner !== "a" && m.winner !== "b")) return; // 不戦勝・結果待ちは数えない
+      const w = m.winner === "a" ? m.a : m.b;
+      const l = m.winner === "a" ? m.b : m.a;
+      [w, l].forEach(id => { if (!(id in r)) { r[id] = GK_RATING_BASE; n[id] = 0; wins[id] = 0; losses[id] = 0; } });
+      // 手合い：勝者が上手なら不利、下手なら有利として見る（星取と同じ）
+      const teaiW = m.winner === "a" ? (m.teai || "互先") : (GK_TEAI_PAIR[m.teai || "互先"] || "互先");
+      const bonus = GK_HANDICAP_ELO[Math.min(GK_TEAI_LEVEL[teaiW] || 0, GK_HANDICAP_ELO.length - 1)];
+      const wb = teaiW.charAt(0) === "向" ? -bonus : bonus;
+      const miss = 1 - expect(r[w] + wb - r[l]); // 勝者が勝つと予想できなかった度合い（0〜1）
+      const kw = kOf(w), kl = kOf(l);        // 更新前の対局数で決める
+      r[w] += kw * miss;
+      r[l] -= kl * miss;
+      n[w]++; n[l]++; wins[w]++; losses[l]++;
+    }));
+  });
+  return Object.keys(n)
+    .map(id => ({ id, rating: r[id], games: n[id], wins: wins[id], losses: losses[id] }))
+    .sort((a, b) => b.rating - a.rating);
+}
+
+const GK_RATING_HELP_HTML = `
+  <details class="sogo-table-toggle-wrap" style="margin:-4px 0 12px">
+    <summary class="sogo-table-toggle">レーティングの仕組み</summary>
+    <div class="note" style="margin:8px 0 0;line-height:1.7">
+      <div>・勝敗から推定した「強さの目安」です。数字が大きいほど強く、全員${GK_RATING_BASE}から始まります。星取（igo.html）と同じ計算方法です。</div>
+      <div>・対局した順（合宿の開始日の古い順、同じ合宿では回戦順）に1局ずつ計算します。レートの高い人に勝つほど、低い人に負けるほど、大きく動きます。</div>
+      <div>・1局で動く幅は、対局が${GK_RATING_K_SWITCH_GAMES}局未満の間は最大${GK_RATING_K_NEW}点、それ以降は最大${GK_RATING_K_SETTLED}点です。</div>
+      <div>・手合いは強さの差を補うものなので、その分を考慮して計算します。ハンデを背負った上手が勝つほどレートが上がり、ハンデをもらった下手が勝っても上がり方は小さくなります。換算は、互先${GK_HANDICAP_ELO[0]}／先${GK_HANDICAP_ELO[1]}／2子${GK_HANDICAP_ELO[2]}／3子${GK_HANDICAP_ELO[3]}／4子${GK_HANDICAP_ELO[4]}点です（星取と同じ仮置きの値）。</div>
+      <div>・手合いを記録していない対局（この機能を入れる前の合宿など）は、互先として計算します。</div>
+      <div>・不戦勝は対局していないため、数えません。</div>
+      <div>・${GK_RATING_PROVISIONAL_GAMES}局未満の人は「暫定」です。1回の合宿で打つのは数局なので、何度か合宿を重ねるまでは参考程度に読んでください。100点以内の差は誤差の範囲です。</div>
+      <div>・星取のレートとは別の尺度です。数字を比べることはできません。順位や総合ポイントには使わない参考値です。</div>
+    </div>
+  </details>`;
+
+function renderGasshukuRatings(filteredList, includeCurrent, nameFallback) {
+  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults }));
+  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults });
+  const rows = computeGasshukuRatings(camps);
+  let html = `<h4 class="section-head" style="margin-top:22px">📈 囲碁レーティング（参考値）</h4>`;
+  html += `<p class="note" style="margin-top:-4px">星取と同じ計算方法です。合宿をまたいで通算し、上のシーズンの絞り込みに従います。</p>`;
+  html += GK_RATING_HELP_HTML;
+  if (rows.length === 0) return html + `<p class="note" style="margin:4px 0 12px">まだ囲碁の対局結果がありません。</p>`;
+  const medals = ["🥇","🥈","🥉"];
+  html += rows.map((p, i) => `
+    <div class="sogo-row">
+      <div class="sogo-num">${medals[i] || (i + 1)}</div>
+      <div class="sogo-info">
+        <div class="sogo-name">${escapeHtml(resolveName(p.id, nameFallback))}</div>
+        <div class="sogo-sub">${p.games}局（${p.wins}勝${p.losses}敗）${p.games < GK_RATING_PROVISIONAL_GAMES ? " ／ 暫定" : ""}</div>
+      </div>
+      <div class="sogo-total">${Math.round(p.rating)}</div>
+    </div>`).join("");
+  return html;
+}
+
 function renderAllTimeTotals(filteredList, includeCurrent, nameFallback) {
   const igoTotals = {}, mjTotals = {}, sogoTotals = {};
   const igoCamps = {}, mjCamps = {}, sogoCamps = {}; // 参加した合宿の回数（種目ごと）
