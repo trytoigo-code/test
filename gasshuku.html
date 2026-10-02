@@ -37,12 +37,12 @@
     合宿内の順位を出す。
 
   ▼合宿の総合順位
-    囲碁順位・麻雀順位をそれぞれ固定配点表でポイント化し、囲碁・麻雀の
-    重み（管理者設定・デフォルト同値）を掛けて合算する。
-    配点表（1〜14位、キリの良い数字を優先）：
-      1位100 / 2位80 / 3位60 / 4位50 / 5位40 / 6位30 / 7位25 / 8位20 /
-      9位16 / 10位13 / 11位10 / 12位7 / 13位4 / 14位2
-    15位以下が出る場合の配点は未定（今後の課題）。
+    sogo.html と同じ方法で計算する。囲碁・麻雀それぞれ、レーティング（Elo）の順位を
+    参加者内でポイントに変換する（1位＝N点、2位＝N-1点…最下位＝1点。Nは参加者数。
+    同率は該当ポイントの平均。まだ対局がない種目・参加していない種目は1点）。
+    総合スコア＝囲碁ポイント×囲碁の比重＋麻雀ポイント×麻雀の比重（比重は管理者設定。
+    合計100%）。囲碁・麻雀のレートは同じ尺度ではないため、レートの値そのものは
+    合算しない。
 
   ▼シーズン
     西さんが手動で区切る（igo.html/mahjong.htmlと同じ運用）。
@@ -135,16 +135,16 @@
       誤って選んだ場合は削除して登録し直す）の両方に対応。他の参加者の更新による
       リアルタイム同期で、入力中のフォームが消えないよう編集中フラグ
       （mjRankInputDirty）でガードしている。
-  - 総合（囲碁ポイント×重み＋麻雀ポイント×重み、実装済み）
-      囲碁・麻雀それぞれの「今回の合宿」内の現在の順位を、固定配点表
-      （1位100／2位80／3位60／4位50／5位40／6位30／7位25／8位20／9位16／
-      10位13／11位10／12位7／13位4／14位2。15位以下は今のところ0点＝今後の課題）
-      でポイント化し、⚙️設定タブの重みを掛けて合算する（表示のたびにその場で
-      計算する。保存はしない）。囲碁は1局も決着していない間、麻雀は対局記録が
-      1件も無い間はその種目のポイントを0のまま扱う（両方とも結果が無ければ
-      「まだ結果がありません」と表示）。片方の種目だけ参加した人は、参加して
-      いない方を「未参加」と表示し、0点扱いにはするが順位計算そのものからは
-      除外しない（総合ポイントに単純加算されるだけなので不利益にはならない）。
+  - 総合（sogo.htmlと同じ方法、実装済み）
+      囲碁・麻雀それぞれのレーティング（Elo）の順位を、参加者内でポイントに変換し
+      （1位＝N点…最下位＝1点。同率は平均。対局がない・参加していない種目は1点）、
+      比重（囲碁／麻雀、合計100%）を掛けて足した「総合スコア」を、高い順に表示する。
+      各行に、囲碁・麻雀それぞれの順位とレート（対局数が少ないものは「暫定」）を
+      併記する。レーティングは同じシーズンの合宿を通算した、その合宿までの値
+      （シーズンが変わると全員1500からやり直し）。麻雀のレーティングは、点棒
+      （mahjong.html）と同じEloを合宿の対局記録から計算する（各対局の順位は
+      対局pt＋チップ換算ptの順）。表示のたびにその場で計算し、保存はしない。
+      総合の囲碁部分は、囲碁タブのマス目表の順位（勝数順）とは別のもの。
   - 過去の合宿（実装済み）
       ⚙️設定タブの「新しい合宿にする」で、今回の合宿（開始日・終了日・参加者・
       囲碁結果・麻雀結果・その時点の重み／チップレート／シーズン番号のスナップ
@@ -167,8 +167,8 @@
   - 囲碁の手合い（回戦の対局カードごとに手合いを選べる。互先／どちらかが下手で
       先・2子・3子・4子。未記録は互先。後から何度でも変更でき、変更しても組み合わせや
       勝敗には影響しない（レーティングと、マス目表の小さな手合い表示にだけ使う））
-  - 設定タブ（管理者の仕事）：重み設定（囲碁・麻雀それぞれの重み。デフォルト
-    囲碁1.0・麻雀1.0）、シーズン管理（西さんが手動で区切る。「今のシーズンを
+  - 設定タブ（管理者の仕事）：比重設定（囲碁・麻雀の比重。合計100%で、囲碁を
+    入れると麻雀は自動で残りの割合になる。sogo.htmlと同じ）、シーズン管理（西さんが手動で区切る。「今のシーズンを
     終えて次を始める」でその時点の重みをFirebaseにアーカイブしてシーズン番号を
     進める。重みの値自体は次シーズンにそのまま引き継がれる）、結果だけリセット
     （今回の合宿の囲碁結果のみ消去、参加者・回戦数は保持）、完全リセット（今回の
@@ -180,14 +180,13 @@
 
 【今後の改良候補】
   - 囲碁レーティングの変動幅・暫定の基準を、合宿の実データで調整する
-  - 15位以下が出た場合の配点方針の検討
   - アーカイブ済みの合宿記録の修正・削除（現状は一度アーカイブすると読み取り専用）
   - 【重要】囲碁・麻雀どちらか片方しか参加しない人の総合順位の扱い
     （現状は単純合計＝doesIgo/doesMjで0点扱いにするだけなので、両方参加した人が
     構造的に有利になる。検討した案：A.今のまま単純合計／B.参加した種目数で
     割って平均化（天井が揃うが「両方頑張った」貢献が薄まる）／C.総合ランキングは
     両方参加した人限定にする／D.片方だけの人に、もう片方の順位を仮補完する。
-    まだ結論は出ていない）
+    まだ結論は出ていない。sogo.html方式では、参加していない種目は1点にしている）
   - 不戦勝（bye）の人が後日実際に対局した場合の結果を、アプリ上に反映する手段が
     まだ無い（不戦勝の勝ちはそのまま残る）
   - 合言葉はアプリ側の入力チェックのみで、Firebase自体は誰でも読み書きできる
@@ -553,22 +552,24 @@
         </div>
         <button class="btn" id="roster-save-btn" style="background:#b89752;margin-top:12px">名簿の変更を保存して同期</button>
 
-        <h3 style="margin-top:24px">重み設定</h3>
-        <p class="note">囲碁・麻雀それぞれの重み。合宿の総合順位は「囲碁ポイント×この重み＋麻雀ポイント×この重み」で計算されます。点棒のチップレート設定と同じ扱いで、シーズンごとに保存されます。</p>
+        <h3 style="margin-top:24px">比重設定</h3>
+        <p class="note">囲碁・麻雀の比重（合計100%）。合宿の総合スコアは「囲碁のポイント×囲碁の比重＋麻雀のポイント×麻雀の比重」で計算されます（sogo.htmlと同じ方法）。囲碁を入れると、麻雀は自動で残りの割合になります。点棒のチップレート設定と同じ扱いで、シーズンごとに保存されます。</p>
         <div class="fg" style="display:flex;align-items:center;gap:8px">
           <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">⚫囲碁</span>
-          <input id="weight-igo" type="number" step="0.1" min="0" style="text-align:center">
+          <input id="weight-igo-pct" type="number" step="1" min="0" max="100" inputmode="numeric" style="text-align:center">
+          <span style="font-size:0.9rem;color:#444">%</span>
         </div>
         <div class="fg" style="display:flex;align-items:center;gap:8px">
           <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">🀄麻雀</span>
-          <input id="weight-mahjong" type="number" step="0.1" min="0" style="text-align:center">
+          <span id="weight-mahjong-pct-display" style="flex:1;text-align:center;font-weight:bold;color:#2c3e50;font-size:1rem">30</span>
+          <span style="font-size:0.9rem;color:#444">%</span>
         </div>
         <p class="note">麻雀のチップ1枚を何ポイントとして換算するか（点棒と同じ考え方。麻雀パートの合宿内順位の計算に使います）。</p>
         <div class="fg" style="display:flex;align-items:center;gap:8px">
           <span style="font-size:0.86rem;font-weight:bold;color:#444;width:70px;flex-shrink:0">🪙レート</span>
           <input id="mj-chip-rate" type="number" step="any" style="text-align:center">
         </div>
-        <button class="btn" id="save-weights" style="background:#b89752">重み・レートを保存して同期</button>
+        <button class="btn" id="save-weights" style="background:#b89752">比重・レートを保存して同期</button>
 
         <h3 style="margin-top:24px">シーズン管理</h3>
         <p class="note">西さんが手動で区切ります（igo.html/mahjong.htmlと同じ運用）。シーズンを終えると、その時点の重みの値ごとアーカイブされ、次のシーズンが始まります（重みの値はそのまま引き継がれるので、必要ならそこで調整してください）。</p>
@@ -637,6 +638,7 @@ let roster = {};   // { id: { name, rank } }
 // players[i]が1位〜4位の順（rank順）に対応する。state.chipRate: チップ1枚あたりの換算ポイント。
 let state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1 };
 let rosterRef = null, stateRef = null, seasonsRef = null, archiveRef = null;
+let gkArchiveList = []; // アーカイブ済みの合宿のキャッシュ（総合の囲碁部分に、その時点のレーティングを使うため）
 let editingRoster = false, editingSetup = false, editingWeights = false;
 let rosterLoaded = false, stateLoaded = false;
 
@@ -647,6 +649,11 @@ if (isConfigured) {
     stateRef   = firebase.database().ref("gasshuku/state");
     seasonsRef = firebase.database().ref("gasshuku/seasons");
     archiveRef = firebase.database().ref("gasshuku/archive");
+    archiveRef.on("value", snap => {
+      const d = snap.val();
+      gkArchiveList = d ? Object.entries(d).map(([key, v]) => ({ key, ...v })) : [];
+      if (rosterLoaded && stateLoaded) renderSogoTab();
+    });
 
     rosterRef.on("value", snap => {
       roster = snap.val() || {};
@@ -1434,34 +1441,38 @@ function igoMatrixTableHTML(list, rounds, roundCount) {
 //  重み設定
 // ============================================================
 function fillWeightInputs() {
-  const igoEl  = document.getElementById("weight-igo");
-  const mjEl   = document.getElementById("weight-mahjong");
+  const igoEl  = document.getElementById("weight-igo-pct");
   const rateEl = document.getElementById("mj-chip-rate");
-  if (!igoEl || !mjEl || !rateEl) return;
-  igoEl.value  = state.weights.igo;
-  mjEl.value   = state.weights.mahjong;
+  if (!igoEl || !rateEl) return;
+  const pct = Math.round(gkWeightShares(state.weights).igo * 100);
+  igoEl.value = pct;
+  document.getElementById("weight-mahjong-pct-display").textContent = 100 - pct;
   rateEl.value = state.chipRate;
 }
-["weight-igo", "weight-mahjong", "mj-chip-rate"].forEach(id => {
+["weight-igo-pct", "mj-chip-rate"].forEach(id => {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener("focus", () => editingWeights = true);
   el.addEventListener("blur",  () => editingWeights = false);
 });
+document.getElementById("weight-igo-pct").addEventListener("input", function() {
+  let pct = parseInt(this.value, 10);
+  if (isNaN(pct)) pct = 0;
+  pct = Math.max(0, Math.min(100, pct));
+  document.getElementById("weight-mahjong-pct-display").textContent = 100 - pct;
+});
 document.getElementById("save-weights").addEventListener("click", () => {
-  const igoW  = parseFloat(document.getElementById("weight-igo").value);
-  const mjW   = parseFloat(document.getElementById("weight-mahjong").value);
+  let pct = parseInt(document.getElementById("weight-igo-pct").value, 10);
+  if (isNaN(pct)) pct = 50;
+  pct = Math.max(0, Math.min(100, pct));
   const rateW = parseFloat(document.getElementById("mj-chip-rate").value);
-  state.weights = {
-    igo:     isNaN(igoW) ? 1 : igoW,
-    mahjong: isNaN(mjW) ? 1 : mjW
-  };
+  state.weights = { igo: Number((pct / 100).toFixed(2)), mahjong: Number(((100 - pct) / 100).toFixed(2)) };
   state.chipRate = isNaN(rateW) ? 1 : rateW;
   editingWeights = false;
   pushState();
   renderMahjongTab();
   renderSogoTab();
-  showToast("重み・レートを保存し、全員に同期しました！");
+  showToast("比重・レートを保存し、全員に同期しました！");
 });
 
 // ============================================================
@@ -1896,125 +1907,199 @@ function mjHistoryHTML() {
 }
 
 // ============================================================
-//  総合（囲碁ポイント×重み＋麻雀ポイント×重み）
+//  総合（sogo.htmlと同じ方法：レーティング順位のポイント×比重）
 // ============================================================
-// 固定配点表（1〜14位）。キリの良い数字を優先し、下位ほど差を詰めている。
-// 15位以下の配点は未定（今後の課題）。
-const SOGO_POINT_TABLE = [100,80,60,50,40,30,25,20,16,13,10,7,4,2];
-function sogoPointsForRank(rank) {
-  if (rank >= 1 && rank <= SOGO_POINT_TABLE.length) return SOGO_POINT_TABLE[rank - 1];
-  return 0;
+// 総合は、sogo.html と同じ方法で計算する。
+//  囲碁・麻雀それぞれの「レーティング（Elo）の順位」を、メンバー内でポイントに変換する
+//  （1位＝N点、2位＝N-1点…N位＝1点。同率は該当ポイントの平均。N＝この総合に含めるメンバー数）。
+//  レーティングがまだ無い（対局していない）種目は1点。総合＝囲碁ポイント×囲碁の比重＋麻雀ポイント×麻雀の比重。
+//  囲碁・麻雀のレートは同じ尺度ではないので、レートの値そのものは合算しない。
+//  レーティングは同じシーズンの合宿を開始日の古い順に通算し、対象の合宿までの値を使う。
+
+const GK_MJ_K_SWITCH_GAMES = 15, GK_MJ_K_NEW = 32, GK_MJ_K_SETTLED = 16; // 点棒（mahjong.html）と同じ
+
+function gkCampCmp(a, b) {
+  return (a.date || "9999").localeCompare(b.date || "9999") || String(a.order).localeCompare(String(b.order));
+}
+// target: { season, date, order, igoResults, mahjongResults, chipRate }（order は並びの補助キー。進行中の合宿は "\uffff"）
+// 同じシーズンの合宿を古い順に並べ、対象の合宿までを返す
+function gkCampsUpTo(target) {
+  const pool = gkArchiveList
+    .filter(rec => (rec.season || 1) === target.season && rec.key !== target.order)
+    .map(rec => ({ date: rec.eventStartDate || "", order: rec.key, igoResults: rec.igoResults, mahjongResults: rec.mahjongResults,
+                   chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 }));
+  pool.push({ date: target.date || "", order: target.order, igoResults: target.igoResults, mahjongResults: target.mahjongResults, chipRate: target.chipRate });
+  pool.sort(gkCampCmp);
+  return pool.slice(0, pool.findIndex(c => c.order === target.order) + 1);
+}
+function gkCurrentCampTarget() {
+  return { season: state.season || 1, date: state.eventStartDate || "", order: "\uffff",
+           igoResults: state.igoResults, mahjongResults: state.mahjongResults, chipRate: state.chipRate };
+}
+function gkArchivedCampTarget(rec) {
+  return { season: rec.season || 1, date: rec.eventStartDate || "", order: rec.key,
+           igoResults: rec.igoResults, mahjongResults: rec.mahjongResults,
+           chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 };
 }
 
-// 囲碁：id -> { rank, points }（決着済みの対局が1つも無ければ空マップ＝まだ得点なし）
-// igoIds/roundsを明示的に渡すことで、今回の合宿にもアーカイブ済みの合宿にも使う。
-function computeIgoRankPointsMap(igoIds, rounds) {
-  const anyDecided = (rounds || []).some(round => round.some(m => m.winner && m.winner !== "bye"));
+// 囲碁：id -> { rating, games, provisional }
+function gkIgoRatingMapOf(camps) {
   const map = {};
-  if (!anyDecided || igoIds.length === 0) return map;
-  computeIgoStandings(igoIds, rounds).forEach((p, i) => { map[p.id] = { rank: i + 1, points: sogoPointsForRank(i + 1) }; });
+  computeGasshukuRatings(camps).forEach(p => { map[p.id] = { rating: p.rating, games: p.games, provisional: p.games < GK_RATING_PROVISIONAL_GAMES }; });
   return map;
 }
 
-// 麻雀：id -> { rank, points }（対局記録が1つも無ければ空マップ＝まだ得点なし）
-// mjIds/results/chipRateを明示的に渡すことで、今回の合宿にもアーカイブ済みの合宿にも使う。
-function computeMahjongRankPointsMap(mjIds, results, chipRate) {
+// 麻雀：点棒（mahjong.html）と同じEloを、合宿の対局記録から計算する。
+// 各対局の順位（対局pt＋チップ換算ptの順）を「上位が下位に勝った」6組の勝ち負けに分けて更新する。
+function gkMjMatchRanks(m, chipRate) {
+  const pts = gkToArr(m.points), chips = gkToArr(m.chips);
+  const combined = pts.map((pt, i) => pt + (chips[i] || 0) * chipRate);
+  const order = combined.map((v, i) => ({ i, v })).sort((a, b) => b.v - a.v);
+  const ranks = new Array(combined.length);
+  order.forEach((o, idx) => { ranks[o.i] = idx + 1; });
+  return ranks;
+}
+function gkMjRatingMapOf(camps) {
+  const r = {}, n = {};
+  const expect = d => 1 / (1 + Math.pow(10, -d / 400));
+  const kOf = p => n[p] < GK_MJ_K_SWITCH_GAMES ? GK_MJ_K_NEW : GK_MJ_K_SETTLED;
+  [...camps].sort(gkCampCmp).forEach(camp => {
+    const chipRate = (typeof camp.chipRate === "number") ? camp.chipRate : 1;
+    gkToArr(camp.mahjongResults).forEach(m => {
+      const ps = gkToArr(m.players), pts = gkToArr(m.points);
+      if (ps.length < 2 || ps.length !== pts.length) return;
+      const ranks = gkMjMatchRanks(m, chipRate);
+      ps.forEach(p => { if (!(p in r)) { r[p] = GK_RATING_BASE; n[p] = 0; } });
+      const delta = {}; ps.forEach(p => { delta[p] = 0; });
+      const share = ps.length - 1;
+      for (let i = 0; i < ps.length; i++) {
+        for (let j = i + 1; j < ps.length; j++) {
+          if (ranks[i] === ranks[j]) continue;
+          const up = ranks[i] < ranks[j] ? ps[i] : ps[j];
+          const down = up === ps[i] ? ps[j] : ps[i];
+          const miss = 1 - expect(r[up] - r[down]);
+          delta[up]   += kOf(up)   / share * miss;
+          delta[down] -= kOf(down) / share * miss;
+        }
+      }
+      ps.forEach(p => { r[p] += delta[p]; n[p]++; });
+    });
+  });
   const map = {};
-  if (mjIds.length < 4 || !results || results.length === 0) return map;
-  computeMjStandings(mjIds, results, chipRate).filter(p => p.games > 0).forEach((p, i) => { map[p.id] = { rank: i + 1, points: sogoPointsForRank(i + 1) }; });
+  Object.keys(n).forEach(p => { if (n[p] > 0) map[p] = { rating: r[p], games: n[p], provisional: n[p] < GK_RATING_PROVISIONAL_GAMES }; });
   return map;
 }
 
-// 重みを反映した配点表のHTML（1〜14位）
-function weightedPointTableRows(weight) {
-  return SOGO_POINT_TABLE.map((pt, i) => {
-    const weighted = Number((pt * weight).toFixed(2));
-    return `${i + 1}位${weighted}`;
-  }).join(" ／ ");
+// ids：総合に含めるメンバー。ratingMap：id -> { rating, provisional }。
+// ・レーティングが無いメンバーは、最下位ポイント（1点）
+// ・同率（同じレーティング）の場合は、該当する順位のポイントを平均する
+function computeDisciplinePoints(ids, ratingMap) {
+  const N = ids.length;
+  const present = ids.filter(id => ratingMap[id]).slice().sort((a, b) => ratingMap[b].rating - ratingMap[a].rating);
+  const result = {};
+  let rank = 0, prev = null;
+  present.forEach((id, idx) => {
+    const rt = ratingMap[id];
+    if (prev === null || rt.rating !== prev) { rank = idx + 1; prev = rt.rating; }
+    result[id] = { present: true, rank, rating: rt.rating, provisional: rt.provisional };
+  });
+  const groups = {};
+  present.forEach((id, idx) => { (groups[result[id].rank] = groups[result[id].rank] || []).push(idx); });
+  Object.values(groups).forEach(idxList => {
+    const avg = idxList.map(idx => N - idx).reduce((sum, v) => sum + v, 0) / idxList.length;
+    idxList.forEach(idx => { result[present[idx]].point = avg; });
+  });
+  ids.filter(id => !ratingMap[id]).forEach(id => { result[id] = { present: false, point: 1 }; });
+  return result;
+}
+
+// 比重：保存されている囲碁・麻雀の値の割合として扱う（0.7／0.3 のような値でも、2／1 のような値でも同じ）
+function gkWeightShares(weights) {
+  const wi = Number(weights && weights.igo) || 0, wm = Number(weights && weights.mahjong) || 0;
+  const sum = wi + wm;
+  return sum > 0 ? { igo: wi / sum, mahjong: wm / sum } : { igo: 0.5, mahjong: 0.5 };
+}
+
+// ids：メンバー、participants：[{id, igo, mahjong}]（参加していない種目は1点にする）
+function computeCampSogoRows(ids, participants, target, weights) {
+  const partMap = {};
+  participants.forEach(p => { partMap[p.id] = p; });
+  const camps = gkCampsUpTo(target);
+  const igoAll = gkIgoRatingMapOf(camps), mjAll = gkMjRatingMapOf(camps);
+  const igoR = {}, mjR = {};
+  ids.forEach(id => {
+    if (partMap[id] && partMap[id].igo && igoAll[id]) igoR[id] = igoAll[id];
+    if (partMap[id] && partMap[id].mahjong && mjAll[id]) mjR[id] = mjAll[id];
+  });
+  const igoPts = computeDisciplinePoints(ids, igoR), mjPts = computeDisciplinePoints(ids, mjR);
+  const sh = gkWeightShares(weights);
+  const rows = ids.map(id => {
+    const ig = igoPts[id], mj = mjPts[id];
+    return { id, name: roster[id]?.name || "", doesIgo: !!(partMap[id] && partMap[id].igo), doesMj: !!(partMap[id] && partMap[id].mahjong),
+             ig, mj, total: Number((ig.point * sh.igo + mj.point * sh.mahjong).toFixed(2)) };
+  });
+  rows.sort((x, y) => y.total - x.total);
+  return rows;
+}
+
+// その合宿に、囲碁の決着済みの対局か麻雀の対局記録が1つでもあるか
+function gkCampHasResults(igoResults, mjResults) {
+  const igo = gkToArr(igoResults).some(round => gkToArr(round).some(m => m.winner && m.winner !== "bye"));
+  return igo || gkToArr(mjResults).length > 0;
+}
+
+function sogoRowsHTML(rows) {
+  const medals = ["🥇","🥈","🥉"];
+  const prov = `<span style="font-size:0.68rem;color:#b89752;margin-left:2px">暫定</span>`;
+  const fmt = v => Number.isInteger(v) ? v : v.toFixed(1);
+  return rows.map((r, i) => {
+    const igLabel = !r.doesIgo ? `未参加（1点）`
+                  : r.ig.present ? `${r.ig.rank}位（${Math.round(r.ig.rating)}）${r.ig.provisional ? prov : ""}`
+                  : `対局なし（1点）`;
+    const mjLabel = !r.doesMj ? `未参加（1点）`
+                  : r.mj.present ? `${r.mj.rank}位（${Math.round(r.mj.rating)}）${r.mj.provisional ? prov : ""}`
+                  : `対局なし（1点）`;
+    return `
+      <div class="sogo-row">
+        <div class="sogo-num">${medals[i] || (i + 1)}</div>
+        <div class="sogo-info">
+          <div class="sogo-name">${escapeHtml(r.name)}</div>
+          <div class="sogo-sub">⚫囲碁 ${igLabel}　／　🀄麻雀 ${mjLabel}</div>
+        </div>
+        <div class="sogo-total">${fmt(r.total)}pt</div>
+      </div>`;
+  }).join("");
 }
 
 function renderSogoTab() {
   const el = document.getElementById("sogo-content");
   if (!el) return;
 
-  const igoIds = igoParticipantIds();
-  const mjIds  = mahjongParticipantIds();
-  const allIds = [...new Set([...igoIds, ...mjIds])];
-
-  if (allIds.length === 0) {
+  const ids = state.participants.filter(p => roster[p.id] && (p.igo || p.mahjong)).map(p => p.id);
+  if (ids.length === 0) {
     el.innerHTML = `<p class="note" style="margin:0">⚙️設定タブで、今回の合宿の参加者（囲碁・麻雀）を選んでください。</p>`;
     return;
   }
+  const sh = gkWeightShares(state.weights);
+  const igoPct = Math.round(sh.igo * 100), mjPct = 100 - igoPct;
 
-  const igoMap = computeIgoRankPointsMap(igoIds, state.igoResults || []);
-  const mjMap  = computeMahjongRankPointsMap(mjIds, state.mahjongResults, state.chipRate);
-  const hasAnyPoints = Object.keys(igoMap).length > 0 || Object.keys(mjMap).length > 0;
-
-  let html = `<p class="note" style="margin-top:0">囲碁・麻雀それぞれの合宿内の順位を配点表でポイント化し、重み（⚙️設定タブ）を掛けて合算します。</p>`;
-  html += `<details style="margin-bottom:14px"><summary class="sogo-table-toggle">配点表を見る（重み反映後）</summary>
-    <div class="note" style="margin-top:8px">
-      ⚫囲碁（重み${state.weights.igo}）<br>${weightedPointTableRows(state.weights.igo)}
+  let html = `<p class="note" style="margin-top:0">囲碁と麻雀、それぞれの参加者内での順位（レーティング順）をポイント化し、現在の比重（囲碁${igoPct}%／麻雀${mjPct}%）で合算したスコアです。囲碁レートと麻雀レートを直接比較・合算したものではありません。</p>`;
+  html += `<details style="margin-bottom:14px"><summary class="sogo-table-toggle">計算のしかた</summary>
+    <div class="note" style="margin-top:8px;line-height:1.7">
+      <div>・囲碁・麻雀それぞれ、レーティングの高い順に、1位＝N点、2位＝N−1点…最下位＝1点とします（Nは参加者の人数）。同じレートの人は、該当するポイントの平均です。</div>
+      <div>・総合スコア＝囲碁のポイント×囲碁の比重＋麻雀のポイント×麻雀の比重です。</div>
+      <div>・レーティングは、同じシーズンの合宿を通算した、今回の合宿までの値です。囲碁タブの順位（勝数順）とは別のものです。</div>
+      <div>・まだ対局がない種目、参加していない種目は、1点として扱います。</div>
+      <div>・「暫定」は、対局数がまだ少ないレーティングです。</div>
     </div>
-    <div class="note" style="margin-top:10px">
-      🀄麻雀（重み${state.weights.mahjong}）<br>${weightedPointTableRows(state.weights.mahjong)}
-    </div>
-    <div class="note" style="margin-top:8px">（15位以下は今のところ0点。今後の課題です）</div>
   </details>`;
 
-  if (!hasAnyPoints) {
-    html += `<p style="color:#999;font-size:0.88rem">まだ囲碁・麻雀どちらも結果がありません。</p>`;
-    el.innerHTML = html;
+  if (!gkCampHasResults(state.igoResults, state.mahjongResults)) {
+    el.innerHTML = html + `<p style="color:#999;font-size:0.88rem">まだ囲碁・麻雀どちらも結果がありません。</p>`;
     return;
   }
-
-  const rows = computeSogoRows(allIds, state.participants, igoMap, mjMap, state.weights);
-  html += sogoRowsHTML(rows);
-
+  html += sogoRowsHTML(computeCampSogoRows(ids, state.participants, gkCurrentCampTarget(), state.weights));
   el.innerHTML = html;
-}
-
-// 総合順位の行データを計算する（参加者リスト・重みを明示的に渡すことで、
-// 今回の合宿にもアーカイブ済みの合宿にも使う）
-function computeSogoRows(allIds, participants, igoMap, mjMap, weights) {
-  const partMap = {};
-  participants.forEach(p => { partMap[p.id] = p; });
-
-  const rows = allIds.map(id => {
-    const doesIgo = !!(partMap[id] && partMap[id].igo);
-    const doesMj  = !!(partMap[id] && partMap[id].mahjong);
-    const igoInfo = igoMap[id]; // { rank, points } | undefined
-    const mjInfo  = mjMap[id];
-    const igoP = igoInfo ? igoInfo.points : 0;
-    const mjP  = mjInfo ? mjInfo.points : 0;
-    // 重みを掛けた後の内訳（表示上の内訳＋合計が、見たまま足し算で合うようにする）
-    const igoWeighted = Number((igoP * weights.igo).toFixed(2));
-    const mjWeighted  = Number((mjP * weights.mahjong).toFixed(2));
-    const total = Number((igoWeighted + mjWeighted).toFixed(2));
-    return { id, name: roster[id]?.name || "", doesIgo, doesMj, igoInfo, mjInfo, igoWeighted, mjWeighted, total };
-  });
-  rows.sort((a, b) => b.total - a.total);
-  return rows;
-}
-
-function sogoRowsHTML(rows) {
-  const medals = ["🥇","🥈","🥉"];
-  return rows.map((r, i) => {
-    const igoLabel = !r.doesIgo ? `囲碁：未参加`
-                   : r.igoInfo  ? `囲碁${r.igoInfo.rank}位（${r.igoWeighted}pt）`
-                   : `囲碁：順位未定`;
-    const mjLabel  = !r.doesMj  ? `麻雀：未参加`
-                   : r.mjInfo   ? `麻雀${r.mjInfo.rank}位（${r.mjWeighted}pt）`
-                   : `麻雀：まだ対局なし`;
-    return `
-      <div class="sogo-row">
-        <div class="sogo-num">${medals[i] || (i + 1)}</div>
-        <div class="sogo-info">
-          <div class="sogo-name">${escapeHtml(r.name)}</div>
-          <div class="sogo-sub">${igoLabel}　／　${mjLabel}</div>
-        </div>
-        <div class="sogo-total">${r.total}pt</div>
-      </div>`;
-  }).join("");
 }
 
 // ============================================================
@@ -2091,6 +2176,7 @@ function renderArchiveTab() {
       : [];
 
     // シーズンの選択肢（アーカイブ済み＋現在進行中の合宿のシーズンから作る）
+    gkArchiveList = list;
     const seasonSet = new Set(list.map(r => r.season || 1));
     seasonSet.add(state.season || 1);
     const seasonOptions = [...seasonSet].sort((a, b) => b - a);
@@ -2206,15 +2292,13 @@ function renderArchivedCampDetail(rec) {
     }
   }
 
-  const allIds = [...new Set([...igoIds, ...mjIds])];
-  if (allIds.length > 0) {
-    const igoMap = computeIgoRankPointsMap(igoIds, igoResults);
-    const mjMap  = computeMahjongRankPointsMap(mjIds, mjResults, chipRate);
-    const hasAnyPoints = Object.keys(igoMap).length > 0 || Object.keys(mjMap).length > 0;
-    html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🏅 総合（重み：囲碁${weights.igo}／麻雀${weights.mahjong}）</div>`;
-    if (hasAnyPoints) {
-      const rows = withNames(computeSogoRows(allIds, rec.participants || [], igoMap, mjMap, weights));
-      html += sogoRowsHTML(rows);
+  const memberIds = (rec.participants || []).map(p => p.id).filter(id => igoIds.includes(id) || mjIds.includes(id));
+  if (memberIds.length > 0) {
+    const shr = gkWeightShares(weights);
+    const igoPct = Math.round(shr.igo * 100);
+    html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🏅 総合（比重：囲碁${igoPct}%／麻雀${100 - igoPct}%）</div>`;
+    if (gkCampHasResults(igoResults, mjResults)) {
+      html += sogoRowsHTML(withNames(computeCampSogoRows(memberIds, rec.participants || [], gkArchivedCampTarget(rec), weights)));
     } else {
       html += `<p class="note" style="margin:0">結果がありませんでした。</p>`;
     }
@@ -2309,58 +2393,26 @@ function renderGasshukuRatings(filteredList, includeCurrent, nameFallback) {
 }
 
 function renderAllTimeTotals(filteredList, includeCurrent, nameFallback) {
-  const igoTotals = {}, mjTotals = {}, sogoTotals = {};
-  const igoCamps = {}, mjCamps = {}, sogoCamps = {}; // 参加した合宿の回数（種目ごと）
-  const addPoints = (map, id, pt) => { map[id] = (map[id] || 0) + pt; };
-  const addCount = (map, id) => { map[id] = (map[id] || 0) + 1; };
+  // この範囲（全期間またはシーズン）の合宿を通算したレーティングで、総合スコアを出す
+  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults,
+    mahjongResults: rec.mahjongResults, chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 }));
+  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults,
+    mahjongResults: state.mahjongResults, chipRate: state.chipRate });
+  const igoR = gkIgoRatingMapOf(camps), mjR = gkMjRatingMapOf(camps);
+  const ids = [...new Set([...Object.keys(igoR), ...Object.keys(mjR)])];
+  if (ids.length === 0) return `<p class="note" style="margin:4px 0 12px">まだ結果がありません。</p>`;
 
-  function addCamp(participants, igoIds, igoResults, mjIds, mjResults, weights, chipRate) {
-    const igoMap = computeIgoRankPointsMap(igoIds, igoResults || []);
-    const mjMap  = computeMahjongRankPointsMap(mjIds, mjResults, chipRate);
-    Object.keys(igoMap).forEach(id => { addPoints(igoTotals, id, Number((igoMap[id].points * weights.igo).toFixed(2))); addCount(igoCamps, id); });
-    Object.keys(mjMap).forEach(id => { addPoints(mjTotals, id, Number((mjMap[id].points * weights.mahjong).toFixed(2))); addCount(mjCamps, id); });
-    const allIds = new Set([...Object.keys(igoMap), ...Object.keys(mjMap)]);
-    allIds.forEach(id => {
-      const igoP = igoMap[id] ? igoMap[id].points : 0;
-      const mjP  = mjMap[id] ? mjMap[id].points : 0;
-      addPoints(sogoTotals, id, Number((igoP * weights.igo + mjP * weights.mahjong).toFixed(2)));
-      addCount(sogoCamps, id);
-    });
-  }
+  const igoPts = computeDisciplinePoints(ids, igoR), mjPts = computeDisciplinePoints(ids, mjR);
+  const sh = gkWeightShares(state.weights);
+  const rows = ids.map(id => ({
+    id, name: resolveName(id, nameFallback), doesIgo: true, doesMj: true,
+    ig: igoPts[id], mj: mjPts[id],
+    total: Number((igoPts[id].point * sh.igo + mjPts[id].point * sh.mahjong).toFixed(2))
+  })).sort((a, b) => b.total - a.total);
 
-  filteredList.forEach(rec => {
-    addCamp(rec.participants || [], archiveIgoIds(rec), rec.igoResults, archiveMjIds(rec), rec.mahjongResults,
-      rec.weights || { igo: 1, mahjong: 1 }, (typeof rec.chipRate === "number") ? rec.chipRate : 1);
-  });
-  if (includeCurrent) {
-    addCamp(state.participants, igoParticipantIds(), state.igoResults, mahjongParticipantIds(), state.mahjongResults,
-      state.weights, state.chipRate);
-  }
-
-  function totalsToHTML(totals, camps, unitLabel) {
-    const ids = Object.keys(totals).filter(id => totals[id] > 0);
-    if (ids.length === 0) return `<p class="note" style="margin:4px 0 12px">まだ結果がありません。</p>`;
-    const rows = ids.map(id => ({ id, name: resolveName(id, nameFallback), pt: totals[id], camps: camps[id] || 0 }));
-    rows.sort((a, b) => b.pt - a.pt);
-    const medals = ["🥇","🥈","🥉"];
-    return `<div style="margin-bottom:14px">` + rows.map((r, i) => `
-      <div class="sogo-row">
-        <div class="sogo-num">${medals[i] || (i+1)}</div>
-        <div class="sogo-info">
-          <div class="sogo-name">${escapeHtml(r.name)}</div>
-          <div class="sogo-sub">${r.camps}回参加</div>
-        </div>
-        <div class="sogo-total">${r.pt}${unitLabel}</div>
-      </div>`).join("") + `</div>`;
-  }
-
-  let html = `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">⚫囲碁</div>`;
-  html += totalsToHTML(igoTotals, igoCamps, "pt");
-  html += `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">🀄麻雀</div>`;
-  html += totalsToHTML(mjTotals, mjCamps, "pt");
-  html += `<div style="font-size:0.76rem;color:#999;font-family:sans-serif;margin-bottom:4px">🏅総合</div>`;
-  html += totalsToHTML(sogoTotals, sogoCamps, "pt");
-  return html;
+  const igoPct = Math.round(sh.igo * 100);
+  return `<p class="note" style="margin:0 0 10px">この範囲の合宿を通算したレーティングの順位をポイント化し、今の比重（囲碁${igoPct}%／麻雀${100 - igoPct}%）で合算した総合スコアです（計算のしかたは「総合」タブを参照）。</p>`
+    + `<div style="margin-bottom:14px">${sogoRowsHTML(rows)}</div>`;
 }
 </script>
 </body>
