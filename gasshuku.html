@@ -122,6 +122,11 @@
       不戦勝の人は自動で決まるが、最新の回戦で結果がまだ1件も入っていなければ、
       回戦の画面のプルダウンで手動で変更できる（組み合わせを作り直す）。順位は
       実際の対局の結果が1件決まってから表示する（不戦勝だけでは順位をつけない）。
+  - 囲碁の自由対局（⚫囲碁タブの下。回戦とは別に、自由に打った対局を、勝者・敗者・
+      勝者の手合いを選んで登録する。回戦の対局と同じ形で保存し、囲碁レーティング
+      （総合に反映）に、回戦の対局のあとに数える。回戦の成績・順位表には入れない。
+      履歴は新しい順に表示し、削除に対応（確認あり）。結果のリセット・完全リセット・
+      新しい合宿にする、とアーカイブにも対応し、過去の合宿の詳細にも表示する）
   - 麻雀（回ごとの自由対局記録、実装済み）
       対象は「今回の合宿設定」で麻雀ON・かつ名簿に存在する参加者。半チャンのたびに
       その中から卓の4人を自由に選んで記録する（入れ替わり・抜け番に対応。既存の
@@ -490,6 +495,7 @@
     <div class="panel active" id="panel-igo">
       <h3>囲碁（スイス式）</h3>
       <div id="igo-content"></div>
+      <div id="igo-free-content" style="margin-top:26px"></div>
     </div>
 
     <!-- 🀄麻雀パート（回ごとの自由対局記録） -->
@@ -636,7 +642,7 @@ let roster = {};   // { id: { name, rank } }
 // state.weights: 総合ポイント計算用の重み。state.season: 西さんが手動で区切るシーズン番号。
 // state.mahjongResults: [ { players:[id,id,id,id], points:[p1,p2,p3,p4], chips:[c1,c2,c3,c4] }, ... ]
 // players[i]が1位〜4位の順（rank順）に対応する。state.chipRate: チップ1枚あたりの換算ポイント。
-let state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1 };
+let state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1, igoFreeGames: [] };
 let rosterRef = null, stateRef = null, seasonsRef = null, archiveRef = null;
 let gkArchiveList = []; // アーカイブ済みの合宿のキャッシュ（総合の囲碁部分に、その時点のレーティングを使うため）
 let editingRoster = false, editingSetup = false, editingWeights = false;
@@ -675,6 +681,7 @@ if (isConfigured) {
         },
         season: (data && typeof data.season === "number") ? data.season : 1,
         mahjongResults: (data && Array.isArray(data.mahjongResults)) ? data.mahjongResults : [],
+        igoFreeGames: (data && data.igoFreeGames) ? gkToArr(data.igoFreeGames) : [],
         chipRate: (data && typeof data.chipRate === "number") ? data.chipRate : 1
       };
       stateLoaded = true;
@@ -1190,9 +1197,89 @@ function roundComplete(round) {
 
 let igoActiveRoundIdx = 0;
 
+// ---------- 囲碁の自由対局 ----------
+// 回戦（スイス式）とは別に、自由に打った対局を記録する。{ a:勝者, b:敗者, winner:"a", teai:勝者の手合い } の形で保存し、
+// 回戦の対局と同じ形なので、レーティング（総合）にそのまま反映される。回戦の成績・順位表には入れない。
+const GK_FREE_TEAI_OPTIONS = [["互先","互先"],["先","先（下手・黒）"],["向先","向先（上手）"],["2子","2子（下手）"],["向2","向2（上手）"],["3子","3子（下手）"],["向3","向3（上手）"],["4子","4子（下手）"],["向4","向4（上手）"]];
+
+function igoFreeListHTML(games, nameOf, showDelete) {
+  if (!games.length) return `<p style="color:#999;font-size:0.88rem">まだ自由対局がありません。</p>`;
+  const teai = t => t && t !== "互先" ? `<span style="font-size:0.76rem;color:#888;font-weight:normal">（${t}）</span>` : "";
+  return games.map((m, idx) => idx).reverse().map(idx => {
+    const m = games[idx];
+    const wt = m.teai || "互先", lt = GK_TEAI_PAIR[wt] || "互先";
+    const del = showDelete ? `<button type="button" class="igo-free-del" data-idx="${idx}" style="background:#e74c3c;color:#fff;border:none;padding:6px 10px;border-radius:4px;font-size:0.76rem;cursor:pointer;flex-shrink:0">削除</button>` : "";
+    return `<div style="display:flex;align-items:center;gap:8px;background:#fdfdfb;border:1px solid #e0dbcd;border-radius:8px;padding:8px 10px;margin-bottom:8px">
+      <div style="flex:1;min-width:0;font-size:0.88rem">👑 <strong>${escapeHtml(nameOf(m.a))}</strong>${teai(wt)}　vs　${escapeHtml(nameOf(m.b))}${teai(lt)}</div>${del}</div>`;
+  }).join("");
+}
+
+function renderIgoFree() {
+  const el = document.getElementById("igo-free-content");
+  if (!el) return;
+  const ids = igoParticipantIds();
+  if (ids.length < 2) {
+    el.innerHTML = `<h3>自由対局</h3><p class="note" style="margin:0">⚙️設定タブで、囲碁の参加者を2人以上選んでください。</p>`;
+    el.dataset.built = "";
+    return;
+  }
+  // 入力欄は初回だけ作る（他の人の更新で、入力中の内容が消えないようにする）
+  if (!el.dataset.built) {
+    el.innerHTML = `<h3>自由対局</h3>
+      <p class="note" style="margin-top:0">回戦とは別に、自由に打った対局を記録します。勝敗はレーティング（総合）に反映されますが、回戦の成績・順位表には入りません。手合いも選んでください。</p>
+      <div class="fg"><label>勝者 👑</label><select id="igo-free-winner"></select></div>
+      <div class="fg"><label>敗者</label><select id="igo-free-loser"></select></div>
+      <div class="fg"><label>勝者の手合い</label>
+        <select id="igo-free-teai">${GK_FREE_TEAI_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select>
+        <p style="margin:6px 0 0;font-size:0.82rem;color:#555">敗者の手合い：<strong id="igo-free-teai-pair">互先</strong></p>
+      </div>
+      <button class="btn" id="igo-free-add">登録する</button>
+      <h3 style="margin-top:24px">自由対局の履歴</h3>
+      <div id="igo-free-list"></div>`;
+    el.dataset.built = "1";
+    document.getElementById("igo-free-teai").addEventListener("change", function() {
+      document.getElementById("igo-free-teai-pair").textContent = GK_TEAI_PAIR[this.value] || "互先";
+    });
+    document.getElementById("igo-free-add").addEventListener("click", () => {
+      const w = document.getElementById("igo-free-winner").value;
+      const l = document.getElementById("igo-free-loser").value;
+      if (!w || !l) { showToast("勝者と敗者を選んでください"); return; }
+      if (w === l) { showToast("同じ人は選べません"); return; }
+      const teai = document.getElementById("igo-free-teai").value;
+      state.igoFreeGames = [...(state.igoFreeGames || []), { a: w, b: l, winner: "a", teai: teai === "互先" ? null : teai }];
+      pushState();
+      document.getElementById("igo-free-winner").value = "";
+      document.getElementById("igo-free-loser").value = "";
+      document.getElementById("igo-free-teai").value = "互先";
+      document.getElementById("igo-free-teai-pair").textContent = "互先";
+      showToast("自由対局を登録しました");
+      renderIgoFree();
+      renderSogoTab();
+    });
+  }
+  // 選択肢は、参加者の変更に合わせて作り直す（選択中の値は、まだ有効なら保つ）
+  ["igo-free-winner", "igo-free-loser"].forEach(id => {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">（選択してください）</option>` + ids.map(pid => `<option value="${pid}">${escapeHtml(roster[pid]?.name || "")}</option>`).join("");
+    sel.value = ids.includes(cur) ? cur : "";
+  });
+  const listEl = document.getElementById("igo-free-list");
+  listEl.innerHTML = igoFreeListHTML(gkToArr(state.igoFreeGames), id => roster[id]?.name || "（削除済み）", true);
+  listEl.querySelectorAll(".igo-free-del").forEach(btn => btn.addEventListener("click", () => {
+    if (!confirm("この自由対局の記録を削除しますか？")) return;
+    state.igoFreeGames = gkToArr(state.igoFreeGames).filter((_, i) => i !== Number(btn.dataset.idx));
+    pushState();
+    showToast("削除しました");
+    renderIgoFree();
+    renderSogoTab();
+  }));
+}
+
 function renderIgoTab() {
   const el = document.getElementById("igo-content");
   if (!el) return;
+  renderIgoFree();
   const igoIds = igoParticipantIds();
 
   if (igoIds.length === 0) {
@@ -1524,6 +1611,7 @@ document.getElementById("reset-results-btn").addEventListener("click", () => {
   if (!confirm("今回の合宿の対局結果（囲碁・麻雀とも）をすべて消去します。参加者・回戦数の設定はそのまま残ります。よろしいですか？")) return;
   state.igoResults = [];
   state.mahjongResults = [];
+  state.igoFreeGames = [];
   igoActiveRoundIdx = 0;
   mjRankInputDirty = false;
   pushState();
@@ -1537,7 +1625,7 @@ document.getElementById("full-reset-btn").addEventListener("click", () => {
   if (!confirm("今回の合宿設定・対局結果・シーズン番号・重み・📚過去の合宿アーカイブ・過去のシーズン記録をすべて消去して最初の状態に戻します（対局者名簿は保持されます）。\nこの操作は取り消せません。本当によいですか？")) return;
   if (archiveRef) archiveRef.remove();
   if (seasonsRef) seasonsRef.remove();
-  state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1 };
+  state = { eventStartDate: "", eventEndDate: "", participants: [], igoRounds: null, igoResults: [], weights: { igo: 1, mahjong: 1 }, season: 1, mahjongResults: [], chipRate: 1, igoFreeGames: [] };
   igoActiveRoundIdx = 0;
   mjRankInputDirty = false;
   pushState();
@@ -1926,19 +2014,19 @@ function gkCampCmp(a, b) {
 function gkCampsUpTo(target) {
   const pool = gkArchiveList
     .filter(rec => (rec.season || 1) === target.season && rec.key !== target.order)
-    .map(rec => ({ date: rec.eventStartDate || "", order: rec.key, igoResults: rec.igoResults, mahjongResults: rec.mahjongResults,
+    .map(rec => ({ date: rec.eventStartDate || "", order: rec.key, igoResults: rec.igoResults, igoFreeGames: rec.igoFreeGames, mahjongResults: rec.mahjongResults,
                    chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 }));
-  pool.push({ date: target.date || "", order: target.order, igoResults: target.igoResults, mahjongResults: target.mahjongResults, chipRate: target.chipRate });
+  pool.push({ date: target.date || "", order: target.order, igoResults: target.igoResults, igoFreeGames: target.igoFreeGames, mahjongResults: target.mahjongResults, chipRate: target.chipRate });
   pool.sort(gkCampCmp);
   return pool.slice(0, pool.findIndex(c => c.order === target.order) + 1);
 }
 function gkCurrentCampTarget() {
   return { season: state.season || 1, date: state.eventStartDate || "", order: "\uffff",
-           igoResults: state.igoResults, mahjongResults: state.mahjongResults, chipRate: state.chipRate };
+           igoResults: state.igoResults, igoFreeGames: state.igoFreeGames, mahjongResults: state.mahjongResults, chipRate: state.chipRate };
 }
 function gkArchivedCampTarget(rec) {
   return { season: rec.season || 1, date: rec.eventStartDate || "", order: rec.key,
-           igoResults: rec.igoResults, mahjongResults: rec.mahjongResults,
+           igoResults: rec.igoResults, igoFreeGames: rec.igoFreeGames, mahjongResults: rec.mahjongResults,
            chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 };
 }
 
@@ -2043,8 +2131,9 @@ function computeCampSogoRows(ids, participants, target, weights) {
 }
 
 // その合宿に、囲碁の決着済みの対局か麻雀の対局記録が1つでもあるか
-function gkCampHasResults(igoResults, mjResults) {
-  const igo = gkToArr(igoResults).some(round => gkToArr(round).some(m => m.winner && m.winner !== "bye"));
+function gkCampHasResults(igoResults, mjResults, freeGames) {
+  const igo = gkToArr(igoResults).some(round => gkToArr(round).some(m => m.winner && m.winner !== "bye"))
+           || gkToArr(freeGames).some(m => m.winner === "a" || m.winner === "b");
   return igo || gkToArr(mjResults).length > 0;
 }
 
@@ -2094,7 +2183,7 @@ function renderSogoTab() {
     </div>
   </details>`;
 
-  if (!gkCampHasResults(state.igoResults, state.mahjongResults)) {
+  if (!gkCampHasResults(state.igoResults, state.mahjongResults, state.igoFreeGames)) {
     el.innerHTML = html + `<p style="color:#999;font-size:0.88rem">まだ囲碁・麻雀どちらも結果がありません。</p>`;
     return;
   }
@@ -2118,6 +2207,7 @@ document.getElementById("new-camp-btn").addEventListener("click", () => {
       igoRounds: state.igoRounds,
       igoResults: state.igoResults,
       mahjongResults: state.mahjongResults,
+      igoFreeGames: state.igoFreeGames,
       weights: { ...state.weights },
       chipRate: state.chipRate,
       season: state.season
@@ -2129,6 +2219,7 @@ document.getElementById("new-camp-btn").addEventListener("click", () => {
   state.igoRounds = null;
   state.igoResults = [];
   state.mahjongResults = [];
+  state.igoFreeGames = [];
   // 重み・チップレート・シーズンだけそのまま引き継ぐ
   igoActiveRoundIdx = 0;
   mjRankInputDirty = false;
@@ -2280,6 +2371,11 @@ function renderArchivedCampDetail(rec) {
     const roundCount = rec.igoRounds || igoResults.length;
     html += igoMatrixTableHTML(fixedOrderList, igoResults, roundCount);
   }
+  const freeGames = gkToArr(rec.igoFreeGames);
+  if (freeGames.length > 0) {
+    html += `<div style="font-size:0.72rem;color:#999;font-family:sans-serif;margin:10px 0 6px">自由対局</div>`;
+    html += igoFreeListHTML(freeGames, id => resolveName(id, nameFallback), false);
+  }
 
   html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🀄 麻雀</div>`;
   if (mjIds.length < 4) {
@@ -2297,7 +2393,7 @@ function renderArchivedCampDetail(rec) {
     const shr = gkWeightShares(weights);
     const igoPct = Math.round(shr.igo * 100);
     html += `<div style="font-size:0.78rem;color:#b89752;font-weight:bold;margin:16px 0 6px">🏅 総合（比重：囲碁${igoPct}%／麻雀${100 - igoPct}%）</div>`;
-    if (gkCampHasResults(igoResults, mjResults)) {
+    if (gkCampHasResults(igoResults, mjResults, rec.igoFreeGames)) {
       html += sogoRowsHTML(withNames(computeCampSogoRows(memberIds, rec.participants || [], gkArchivedCampTarget(rec), weights)));
     } else {
       html += `<p class="note" style="margin:0">結果がありませんでした。</p>`;
@@ -2335,7 +2431,11 @@ function computeGasshukuRatings(camps) {
   const kOf = id => n[id] < GK_RATING_K_SWITCH_GAMES ? GK_RATING_K_NEW : GK_RATING_K_SETTLED;
   const ordered = [...camps].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999") || String(a.order).localeCompare(String(b.order)));
   ordered.forEach(camp => {
-    gkToArr(camp.igoResults).forEach(round => gkToArr(round).forEach(m => {
+    // 回戦の対局のあとに、自由対局を数える
+    const games = [];
+    gkToArr(camp.igoResults).forEach(round => gkToArr(round).forEach(m => games.push(m)));
+    gkToArr(camp.igoFreeGames).forEach(m => games.push(m));
+    games.forEach(m => {
       if (!m.b || (m.winner !== "a" && m.winner !== "b")) return; // 不戦勝・結果待ちは数えない
       const w = m.winner === "a" ? m.a : m.b;
       const l = m.winner === "a" ? m.b : m.a;
@@ -2349,7 +2449,7 @@ function computeGasshukuRatings(camps) {
       r[w] += kw * miss;
       r[l] -= kl * miss;
       n[w]++; n[l]++; wins[w]++; losses[l]++;
-    }));
+    });
   });
   return Object.keys(n)
     .map(id => ({ id, rating: r[id], games: n[id], wins: wins[id], losses: losses[id] }))
@@ -2364,6 +2464,7 @@ const GK_RATING_HELP_HTML = `
       <div>・対局した順（合宿の開始日の古い順、同じ合宿では回戦順）に1局ずつ計算します。レートの高い人に勝つほど、低い人に負けるほど、大きく動きます。</div>
       <div>・1局で動く幅は、対局が${GK_RATING_K_SWITCH_GAMES}局未満の間は最大${GK_RATING_K_NEW}点、それ以降は最大${GK_RATING_K_SETTLED}点です。</div>
       <div>・手合いは強さの差を補うものなので、その分を考慮して計算します。ハンデを背負った上手が勝つほどレートが上がり、ハンデをもらった下手が勝っても上がり方は小さくなります。換算は、互先${GK_HANDICAP_ELO[0]}／先${GK_HANDICAP_ELO[1]}／2子${GK_HANDICAP_ELO[2]}／3子${GK_HANDICAP_ELO[3]}／4子${GK_HANDICAP_ELO[4]}点です（星取と同じ仮置きの値）。</div>
+      <div>・回戦とは別に登録した自由対局も、回戦の対局のあとに数えます。</div>
       <div>・手合いを記録していない対局（この機能を入れる前の合宿など）は、互先として計算します。</div>
       <div>・不戦勝は対局していないため、数えません。</div>
       <div>・${GK_RATING_PROVISIONAL_GAMES}局未満の人は「暫定」です。1回の合宿で打つのは数局なので、何度か合宿を重ねるまでは参考程度に読んでください。100点以内の差は誤差の範囲です。</div>
@@ -2372,8 +2473,8 @@ const GK_RATING_HELP_HTML = `
   </details>`;
 
 function renderGasshukuRatings(filteredList, includeCurrent, nameFallback) {
-  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults }));
-  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults });
+  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults, igoFreeGames: rec.igoFreeGames }));
+  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults, igoFreeGames: state.igoFreeGames });
   const rows = computeGasshukuRatings(camps);
   let html = `<h4 class="section-head" style="margin-top:22px">📈 囲碁レーティング（参考値）</h4>`;
   html += `<p class="note" style="margin-top:-4px">星取と同じ計算方法です。合宿をまたいで通算し、上のシーズンの絞り込みに従います。</p>`;
@@ -2394,9 +2495,9 @@ function renderGasshukuRatings(filteredList, includeCurrent, nameFallback) {
 
 function renderAllTimeTotals(filteredList, includeCurrent, nameFallback) {
   // この範囲（全期間またはシーズン）の合宿を通算したレーティングで、総合スコアを出す
-  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults,
+  const camps = filteredList.map(rec => ({ date: rec.eventStartDate || "", order: rec.key || "", igoResults: rec.igoResults, igoFreeGames: rec.igoFreeGames,
     mahjongResults: rec.mahjongResults, chipRate: (typeof rec.chipRate === "number") ? rec.chipRate : 1 }));
-  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults,
+  if (includeCurrent) camps.push({ date: state.eventStartDate || "", order: "\uffff", igoResults: state.igoResults, igoFreeGames: state.igoFreeGames,
     mahjongResults: state.mahjongResults, chipRate: state.chipRate });
   const igoR = gkIgoRatingMapOf(camps), mjR = gkMjRatingMapOf(camps);
   const ids = [...new Set([...Object.keys(igoR), ...Object.keys(mjR)])];
